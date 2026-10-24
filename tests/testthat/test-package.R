@@ -87,11 +87,87 @@ test_that("an interrupted copy removes its temporary file", {
 test_that("download errors keep the caller and restore the timeout", {
   withr::local_options(inmetr.base_url = "file:///definitely/not/inmetr")
   timeout <- getOption("timeout")
-  invoke <- function() inmetr:::.fetch_asset("manifest.json", tempfile())
+  invoke <- function() {
+    return(inmetr:::.fetch_asset("manifest.json", tempfile()))
+  }
   error <- tryCatch(invoke(), error = identity)
   expect_match(conditionMessage(error), "Could not download")
   expect_identical(conditionCall(error), quote(invoke()))
   expect_identical(getOption("timeout"), timeout)
+})
+
+test_that("downloads raise the timeout without lowering an existing one", {
+  assets <- local_fixture()
+  options(inmetr.base_url = "https://example.invalid/inmetr")
+  for (timeout in c(60, 7200)) {
+    withr::local_options(timeout = timeout)
+    testthat::local_mocked_bindings(
+      download.file = function(url, destfile, ...) {
+        expect_gte(getOption("timeout"), 3600)
+        expect_equal(getOption("timeout"), max(3600, timeout))
+        file.copy(file.path(assets, basename(url)), destfile)
+        return(0L)
+      },
+      .package = "utils"
+    )
+    inmetr:::.fetch_asset("manifest.json", tempfile())
+    expect_equal(getOption("timeout"), timeout)
+  }
+})
+
+test_that("manifest entries require valid path, size, and SHA-256", {
+  assets <- local_fixture()
+  manifest_path <- file.path(assets, "manifest.json")
+  original <- jsonlite::fromJSON(manifest_path, simplifyVector = FALSE)
+  cases <- list(
+    missing_hash = function(entry) {
+      entry$sha256 <- NULL
+      return(entry)
+    },
+    bad_hash = function(entry) {
+      entry$sha256 <- "bad"
+      return(entry)
+    },
+    bad_size = function(entry) {
+      entry$size <- -1
+      return(entry)
+    }
+  )
+  for (change in cases) {
+    manifest <- original
+    entry <- manifest$tables$stations$files[[1]]
+    entry <- change(entry)
+    manifest$tables$stations$files[[1]] <- entry
+    jsonlite::write_json(manifest, manifest_path, auto_unbox = TRUE)
+    unlink(file.path(inmet_cache_dir(), "2026-10-24"), recursive = TRUE)
+    error <- tryCatch(inmet_stations(), error = identity)
+    expect_s3_class(error, "error")
+    expect_match(conditionMessage(error), "manifest")
+    expect_identical(conditionCall(error), quote(inmet_stations()))
+    expect_false(file.exists(file.path(
+      inmet_cache_dir(),
+      "2026-10-24",
+      "stations.parquet"
+    )))
+  }
+})
+
+test_that("manifest errors report exported readers", {
+  assets <- local_fixture()
+  writeLines("{incomplete", file.path(assets, "manifest.json"))
+  error <- tryCatch(inmet_stations(), error = identity)
+  expect_identical(conditionCall(error), quote(inmet_stations()))
+  error <- tryCatch(read_inmet("daily", 2024), error = identity)
+  expect_identical(conditionCall(error), quote(read_inmet("daily", 2024)))
+})
+
+test_that("cache option errors report exported readers", {
+  local_fixture()
+  options(inmetr.cache_dir = "")
+  error <- tryCatch(inmet_stations(), error = identity)
+  expect_identical(conditionCall(error), quote(inmet_stations()))
+  error <- tryCatch(read_inmet("daily", 2024), error = identity)
+  expect_identical(conditionCall(error), quote(read_inmet("daily", 2024)))
 })
 
 test_that("a corrupt cached manifest is downloaded again once", {
@@ -202,6 +278,6 @@ test_that("cache option and clear use the selected cache", {
     "2026-10-24",
     "stations.parquet"
   )))
-  inmet_cache_clear()
+  inmet_cache_clear(ask = FALSE)
   expect_false(dir.exists(file.path(inmet_cache_dir(), "2026-10-24")))
 })

@@ -4,7 +4,10 @@
 \alias{inmet_cache_clear}
 \title{Clear the inmetr data cache}
 \usage{
-inmet_cache_clear()
+inmet_cache_clear(ask = interactive())
+}
+\arguments{
+\item{ask}{Whether to ask for confirmation before deleting cached files.}
 }
 \value{
 Invisibly returns whether files were removed.

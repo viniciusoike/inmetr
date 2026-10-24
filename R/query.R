@@ -17,7 +17,7 @@
   return(invisible(NULL))
 }
 
-.read_sql <- function(paths, schema) {
+.read_sql <- function(paths, schema, call = rlang::caller_env()) {
   con <- .get_connection()
   quoted <- vapply(
     paths,
@@ -45,7 +45,7 @@
   ) {
     cli::cli_abort(
       "Parquet columns or types do not match the data manifest.",
-      call = rlang::caller_env()
+      call = call
     )
   }
   return(sql)
@@ -60,8 +60,9 @@
 #' daily <- read_inmet("daily", 2024)
 #' dplyr::collect(dplyr::filter(daily, .data$code_muni == 3550308L))
 read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
+  call <- sys.call()
   table <- rlang::arg_match(table)
-  manifest <- .manifest()
+  manifest <- .manifest(call = call)
   entries <- manifest$tables[[table]]$files
   available <- as.integer(vapply(
     entries,
@@ -84,12 +85,13 @@ read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
       any(!years %in% available)
   ) {
     cli::cli_abort(
-      "{.arg years} must contain available years: {paste(available, collapse = ', ')}."
+      "{.arg years} must contain available years: {paste(available, collapse = ', ')}.",
+      call = call
     )
   }
   selected <- entries[available %in% unique(as.integer(years))]
-  paths <- vapply(selected, .ensure_file, character(1))
-  sql <- .read_sql(paths, manifest$tables[[table]]$schema)
+  paths <- vapply(selected, .ensure_file, character(1), call = call)
+  sql <- .read_sql(paths, manifest$tables[[table]]$schema, call = call)
   return(dplyr::tbl(.get_connection(), dbplyr::sql(sql)))
 }
 
@@ -99,9 +101,10 @@ read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
 #' @examplesIf interactive()
 #' inmet_stations()
 inmet_stations <- function() {
-  manifest <- .manifest()
+  call <- sys.call()
+  manifest <- .manifest(call = call)
   entry <- manifest$tables$stations$files[[1]]
-  path <- .ensure_file(entry)
-  sql <- .read_sql(path, manifest$tables$stations$schema)
+  path <- .ensure_file(entry, call = call)
+  sql <- .read_sql(path, manifest$tables$stations$schema, call = call)
   return(tibble::as_tibble(DBI::dbGetQuery(.get_connection(), sql)))
 }
