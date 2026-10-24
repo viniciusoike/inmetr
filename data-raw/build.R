@@ -17,12 +17,16 @@ missing_dependencies <- dependencies[
   !vapply(dependencies, requireNamespace, logical(1), quietly = TRUE)
 ]
 if (length(missing_dependencies)) {
-  stop(
+  install_message <- paste0(
     "Install build dependencies before running: install.packages(c(",
     paste(sprintf("\"%s\"", missing_dependencies), collapse = ", "),
-    "))",
-    call. = FALSE
+    "))"
   )
+  if (requireNamespace("cli", quietly = TRUE)) {
+    cli::cli_abort(install_message)
+  }
+  # cli may itself be missing, so the dependency check needs a base-R fallback.
+  stop(install_message, call. = FALSE)
 }
 
 source(here::here("data-raw", "pipeline", "parse.R"))
