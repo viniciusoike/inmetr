@@ -1,0 +1,15 @@
+TEMPERATURA DO AR - BULBO SECO, HORARIA (°C) >
+
+Nas estações convencionais é a medida da temperatura do ar, a partir do termômetro de bulbo seco do psicrômetro (equipamento dotado de um termômetro de bulbo seco e um termômetro de bulbo úmido). Nas estações automáticas é medida média da temperatura do ar, ocorrida na última hora antes de cada mensagem de dados.
+
+TEMPERATURA DO PONTO DE ORVALHO (°C) >
+
+Nas estações convencionais é uma medida determinada de forma indireta (a partir dos valores de temperatura do ar e da umidade relativa), através de valores tabulares. E indica a temperatura que o ar deveria ter, para que ele se tornasse saturado, e assim produzir orvalho. Nas estações automáticas este parâmetro é calculado a partir dos valores de temperatura do ar e da umidade relativa, ocorridos na última hora antes de cada mensagem de dados.
+
+TEMPERATURA DO PONTO DE ORVALHO MAXIMA NA HORA ANTERIOR (AUT) (°C) >
+
+Nas estações automáticas este parâmetro é calculado a partir dos valores máximos de temperatura do ar e da umidade relativa, ocorridos na última hora antes de cada mensagem de dados. Este parâmetro não é determinado nas estações convencionais.
+
+TEMPERATURA DO PONTO DE ORVALHO MINIMA NA HORA ANTERIOR (AUT) (°C) >
+
+Nas estações automáticas este parâmetro é calculado a partir dos valores mínimos de temperatura do ar e da umidade relativa, ocorridos na última hora antes de cada mensagem de dados. Este parâmetro não é determinado nas estações convencionais.

@@ -1,0 +1,8 @@
+.Rproj.user
+.Rhistory
+.RData
+.DS_Store
+._*
+data-raw/data/
+data/porto_alegre.csv
+inst/doc
