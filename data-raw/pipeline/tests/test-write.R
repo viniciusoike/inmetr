@@ -36,7 +36,7 @@ testthat::test_that("writer preserves local-year partitions and output contract"
   stations <- data.table::data.table(
     code_station = "A001",
     tz_offset_hours = -3L,
-    code_muni = "5300108",
+    code_muni = 5300108L,
     name_muni = "Brasília",
     abbrev_state = "DF"
   )
@@ -92,7 +92,7 @@ testthat::test_that("writer preserves local-year partitions and output contract"
       first_obs = as.POSIXct("2021-01-01 01:00:00", tz = "UTC"),
       last_obs = as.POSIXct("2021-01-01 03:00:00", tz = "UTC"),
       tz_offset_hours = -3L,
-      code_muni = "5300108",
+      code_muni = 5300108L,
       name_muni = "Brasília",
       abbrev_state = "DF",
       name_region = "CO",
@@ -107,7 +107,17 @@ testthat::test_that("writer preserves local-year partitions and output contract"
     )
   )
   manifest <- write_manifest(con, root, "test", "test-sha")
-  testthat::expect_equal(manifest$schema_version, 1L)
+  testthat::expect_equal(manifest$schema_version, 2L)
+  for (table in names(manifest$tables)) {
+    testthat::expect_equal(
+      manifest$tables[[table]]$schema[[which(vapply(
+        manifest$tables[[table]]$schema,
+        function(column) column$name == "code_muni",
+        logical(1)
+      ))]]$type,
+      "INTEGER"
+    )
+  }
   for (table in names(manifest$tables)) {
     for (entry in manifest$tables[[table]]$files) {
       path <- file.path(root, entry$path)

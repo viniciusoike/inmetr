@@ -47,7 +47,7 @@ expected_schemas <- list(
     day = "INTEGER",
     hour_local = "INTEGER",
     stats::setNames(rep("DOUBLE", length(inmet_variables)), inmet_variables),
-    code_muni = "VARCHAR",
+    code_muni = "INTEGER",
     name_muni = "VARCHAR",
     abbrev_state = "VARCHAR"
   ),
@@ -73,7 +73,7 @@ expected_schemas <- list(
     pressure_station_mean_hpa = "DOUBLE",
     wind_speed_mean_ms = "DOUBLE",
     wind_gust_max_ms = "DOUBLE",
-    code_muni = "VARCHAR",
+    code_muni = "INTEGER",
     name_muni = "VARCHAR",
     abbrev_state = "VARCHAR"
   ),
@@ -88,7 +88,7 @@ expected_schemas <- list(
     first_obs = "TIMESTAMP",
     last_obs = "TIMESTAMP",
     tz_offset_hours = "INTEGER",
-    code_muni = "VARCHAR",
+    code_muni = "INTEGER",
     name_muni = "VARCHAR",
     abbrev_state = "VARCHAR",
     name_region = "VARCHAR",
@@ -161,7 +161,7 @@ write_manifest <- function(con, output_dir, version, build_commit) {
   }
   manifest <- list(
     version = version,
-    schema_version = 1L,
+    schema_version = 2L,
     build_commit = build_commit,
     retrieved_at = NULL,
     source_url = "https://portal.inmet.gov.br/dadoshistoricos",
