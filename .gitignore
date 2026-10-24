@@ -4,5 +4,6 @@
 .DS_Store
 ._*
 data-raw/data/
+data-raw/output/
 data/porto_alegre.csv
 inst/doc
