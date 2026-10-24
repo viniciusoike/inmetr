@@ -68,6 +68,13 @@ con <- DBI::dbConnect(
   dbdir = file.path(working_dir, "final.duckdb")
 )
 DBI::dbExecute(con, "SET memory_limit = '4GB'")
+DBI::dbExecute(
+  con,
+  sprintf(
+    "SET temp_directory = '%s'",
+    gsub("'", "''", file.path(working_dir, "duckdb-temp"), fixed = TRUE)
+  )
+)
 write_daily(con, working_dir)
 hourly <- gsub(
   "'",

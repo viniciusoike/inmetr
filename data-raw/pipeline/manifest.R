@@ -101,6 +101,14 @@ validate_output <- function(con, output_dir, report_dir) {
     )
   )
   data.table::fwrite(daily_counts, file.path(report_dir, "daily-by-year.csv"))
+  hours <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT year, n_hours, count(*) AS days FROM read_parquet('%s') GROUP BY 1, 2 ORDER BY 1, 2",
+      daily
+    )
+  )
+  data.table::fwrite(hours, file.path(report_dir, "daily-n-hours.csv"))
   na_sql <- paste(
     sprintf(
       "avg(CAST(%s IS NULL AS DOUBLE)) AS %s",
@@ -118,17 +126,21 @@ validate_output <- function(con, output_dir, report_dir) {
     )
   )
   data.table::fwrite(missing, file.path(report_dir, "missing-by-year.csv"))
-  duplicates <- DBI::dbGetQuery(
-    con,
-    sprintf(
-      "
-    SELECT count(*) AS n FROM (SELECT code_station, timestamp_utc,
-      count(*) AS n FROM read_parquet('%s') GROUP BY 1,2 HAVING count(*) > 1)",
-      hourly
+  input <- data.table::fread(file.path(report_dir, "input-by-year.csv"))
+  comparison <- merge(
+    input,
+    counts[, c("year", "rows")],
+    by = "year",
+    all = TRUE
+  )
+  if (
+    nrow(comparison) != nrow(input) ||
+      anyNA(comparison$rows) ||
+      any(comparison$rows != comparison$rows_raw - comparison$duplicate_rows)
+  ) {
+    cli::cli_abort(
+      "Hourly Parquet row counts do not reconcile with input rows and deduplication."
     )
-  )$n
-  if (duplicates != 0L) {
-    cli::cli_abort("Output contains duplicate station-hour rows.")
   }
   invalid <- DBI::dbGetQuery(
     con,
