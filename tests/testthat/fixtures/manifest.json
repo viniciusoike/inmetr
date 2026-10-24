@@ -1,0 +1,157 @@
+{
+  "version": "2026-10-24",
+  "schema_version": 2,
+  "build_commit": "fixture",
+  "retrieved_at": null,
+  "source_url": "fixture",
+  "tables": {
+    "daily": {
+      "files": [
+        {
+          "path": "daily/year=2023/part-0.parquet",
+          "size": 934,
+          "sha256": "bab8592d5d7e7976fc43bd7793d9a6667149cfb161f914fbb0e163d9698079c0",
+          "row_count": 1
+        },
+        {
+          "path": "daily/year=2024/part-0.parquet",
+          "size": 934,
+          "sha256": "65974bb1fee7245336435e0f6edf876d5b0c573a22d234253204497ef13cdf5c",
+          "row_count": 1
+        }
+      ],
+      "schema": [
+        {
+          "name": "code_station",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "date",
+          "type": "DATE"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER"
+        },
+        {
+          "name": "code_muni",
+          "type": "INTEGER"
+        },
+        {
+          "name": "name_muni",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "abbrev_state",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "temp_mean_c",
+          "type": "DOUBLE"
+        }
+      ]
+    },
+    "hourly": {
+      "files": [
+        {
+          "path": "hourly/year=2023/part-0.parquet",
+          "size": 989,
+          "sha256": "1b617c73a220d1be980eb489fd2e670a5648fd38e48f5160fbef5bfbef63cbe5",
+          "row_count": 1
+        },
+        {
+          "path": "hourly/year=2024/part-0.parquet",
+          "size": 989,
+          "sha256": "283f49819702bce99d63cebd42f86b18eeb863d0cac19de405d8823b3b7dbe93",
+          "row_count": 1
+        }
+      ],
+      "schema": [
+        {
+          "name": "code_station",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "timestamp_utc",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER"
+        },
+        {
+          "name": "code_muni",
+          "type": "INTEGER"
+        },
+        {
+          "name": "name_muni",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "abbrev_state",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "temp_dry_bulb_c",
+          "type": "DOUBLE"
+        }
+      ]
+    },
+    "stations": {
+      "files": [
+        {
+          "path": "stations.parquet",
+          "size": 1658,
+          "sha256": "479cca7bcf26d89fd78e8bddfe3e010311472bf4e68aabc82e73f64733f670a6",
+          "row_count": 3
+        }
+      ],
+      "schema": [
+        {
+          "name": "code_station",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "name_station",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "lat",
+          "type": "DOUBLE"
+        },
+        {
+          "name": "lon",
+          "type": "DOUBLE"
+        },
+        {
+          "name": "first_obs",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "last_obs",
+          "type": "TIMESTAMP"
+        },
+        {
+          "name": "code_muni",
+          "type": "INTEGER"
+        },
+        {
+          "name": "name_muni",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "abbrev_state",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "muni_match",
+          "type": "VARCHAR"
+        }
+      ]
+    }
+  }
+}
