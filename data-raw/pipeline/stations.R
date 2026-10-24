@@ -57,17 +57,21 @@ read_station_catalog <- function() {
   return(dat)
 }
 
-station_offset <- function(abbrev_state, lon, lat, name_muni) {
+station_offset <- function(abbrev_state, lon, lat, name_muni, offshore) {
   offset <- rep(-3L, length(lon))
   offset[abbrev_state %in% c("MT", "MS", "RO", "RR")] <- -4L
   offset[abbrev_state == "AC"] <- -5L
   # The 2013 legal boundary runs from Tabatinga to Porto Acre.
-  boundary_lon <- -69.94 + (lat + 4.23) * (-1.96 / -5.82)
-  offset[abbrev_state == "AM" & lon < boundary_lon] <- -5L
-  offset[abbrev_state == "AM" & lon >= boundary_lon] <- -4L
+  boundary_lon <- -69.94 + (lat + 4.23) * (1.96 / -5.76)
+  offset[abbrev_state == "AM" & lon <= boundary_lon] <- -5L
+  offset[abbrev_state == "AM" & lon > boundary_lon] <- -4L
   offset[
     name_muni == "Fernando de Noronha" |
-      (lon > -40 & lat < 1 & lat > -25 & abbrev_state %in% c("PE", "RN", "ES"))
+      (offshore &
+        lon > -40 &
+        lat < 1 &
+        lat > -25 &
+        abbrev_state %in% c("PE", "RN", "ES"))
   ] <- -2L
   return(offset)
 }
@@ -186,7 +190,13 @@ build_stations <- function(files, report_dir) {
   stations[, abbrev_state := joined$abbrev_state.y]
   stations[, name_region := joined$name_region.y]
   stations[,
-    tz_offset_hours := station_offset(abbrev_state, lon, lat, name_muni)
+    tz_offset_hours := station_offset(
+      abbrev_state,
+      lon,
+      lat,
+      name_muni,
+      seq_len(.N) %in% missing
+    )
   ]
   stations[,
     c(
