@@ -36,3 +36,11 @@ testthat::test_that("unknown headers fail before data are imported", {
   writeLines(lines, temp, useBytes = TRUE)
   testthat::expect_error(read_inmet_csv(temp), "Unknown INMET header")
 })
+
+testthat::test_that("published F altitude is missing, not a parse warning", {
+  testthat::expect_true(is.na(parse_metadata_number("F", allow_missing = TRUE)))
+  testthat::expect_error(
+    parse_metadata_number("F"),
+    "Invalid station coordinate"
+  )
+})

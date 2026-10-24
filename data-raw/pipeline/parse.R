@@ -20,6 +20,17 @@ inmet_variables <- c(
   "wind_speed_ms"
 )
 
+parse_metadata_number <- function(value, allow_missing = FALSE) {
+  if (allow_missing && value == "F") {
+    return(NA_real_)
+  }
+  result <- suppressWarnings(as.numeric(sub(",", ".", value, fixed = TRUE)))
+  if (is.na(result)) {
+    cli::cli_abort("Invalid station coordinate or altitude: {.val {value}}.")
+  }
+  return(result)
+}
+
 read_inmet_header <- function(path) {
   lines <- iconv(
     readLines(path, n = 9L, encoding = "bytes", warn = FALSE),
@@ -38,6 +49,16 @@ read_inmet_header <- function(path) {
     "ALTITUDE:"
   )
   if (!identical(keys[c(2, 4:7)], valid_keys)) {
+    cli::cli_abort("Unknown INMET metadata header in {.file {path}}.")
+  }
+  metadata_variants <- list(
+    c("REGIÃO:", "ESTAÇÃO:", "DATA DE FUNDAÇÃO (YYYY-MM-DD):"),
+    c("REGI?O:", "ESTAC?O:", "DATA DE FUNDAC?O:"),
+    c("REGIAO:", "ESTACAO:", "DATA DE FUNDACAO:")
+  )
+  if (
+    !any(vapply(metadata_variants, identical, logical(1), keys[c(1, 3, 8)]))
+  ) {
     cli::cli_abort("Unknown INMET metadata header in {.file {path}}.")
   }
   fields <- strsplit(lines[[9]], ";", fixed = TRUE)[[1]]
@@ -72,9 +93,9 @@ read_inmet_header <- function(path) {
     name_region = values[[1]],
     abbrev_state = values[[2]],
     name_station = values[[3]],
-    lat = as.numeric(sub(",", ".", values[[5]], fixed = TRUE)),
-    lon = as.numeric(sub(",", ".", values[[6]], fixed = TRUE)),
-    altitude_m = as.numeric(sub(",", ".", values[[7]], fixed = TRUE)),
+    lat = parse_metadata_number(values[[5]]),
+    lon = parse_metadata_number(values[[6]]),
+    altitude_m = parse_metadata_number(values[[7]], allow_missing = TRUE),
     date_start_operation = values[[8]],
     format = if (fields[[1]] == "Data") "new" else "old"
   ))
