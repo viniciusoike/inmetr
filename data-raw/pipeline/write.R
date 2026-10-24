@@ -125,7 +125,8 @@ write_daily <- function(con, output_dir) {
         CAST(month(date) AS INTEGER) AS month, CAST(day(date) AS INTEGER) AS day,
         CAST(dayofyear(date) AS INTEGER) AS day_of_year,
         CAST(week(date) AS INTEGER) AS week, CAST(isodow(date) AS INTEGER) AS weekday,
-        n_hours, temp_mean_c, temp_min_c, temp_max_c, temp_dew_point_mean_c,
+        CAST(n_hours AS INTEGER) AS n_hours,
+        temp_mean_c, temp_min_c, temp_max_c, temp_dew_point_mean_c,
         rel_humidity_mean_pct, rel_humidity_min_pct, rel_humidity_max_pct,
         precip_total_mm, radiation_total_kj_m2, pressure_station_mean_hpa,
         wind_speed_mean_ms, wind_gust_max_ms, code_muni, name_muni, abbrev_state

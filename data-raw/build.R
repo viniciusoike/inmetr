@@ -1,15 +1,43 @@
 # INMET automatic-station build ----
 
+dependencies <- c(
+  "DBI",
+  "duckdb",
+  "sf",
+  "geobr",
+  "digest",
+  "jsonlite",
+  "cli",
+  "testthat",
+  "here",
+  "data.table",
+  "rlang"
+)
+missing_dependencies <- dependencies[
+  !vapply(dependencies, requireNamespace, logical(1), quietly = TRUE)
+]
+if (length(missing_dependencies)) {
+  stop(
+    "Install build dependencies before running: install.packages(c(",
+    paste(sprintf("\"%s\"", missing_dependencies), collapse = ", "),
+    "))",
+    call. = FALSE
+  )
+}
+
 source(here::here("data-raw", "pipeline", "parse.R"))
 source(here::here("data-raw", "pipeline", "stations.R"))
 source(here::here("data-raw", "pipeline", "write.R"))
 source(here::here("data-raw", "pipeline", "manifest.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) > 1L || (length(args) == 1L && args != "--sample")) {
-  cli::cli_abort("Use Rscript data-raw/build.R [--sample].")
+if (anyDuplicated(args) || any(!args %in% c("--sample", "--allow-dirty"))) {
+  cli::cli_abort("Use Rscript data-raw/build.R [--sample] [--allow-dirty].")
 }
-sample <- identical(args, "--sample")
+sample <- "--sample" %in% args
+build_commit <- get_build_commit(
+  allow_dirty = sample || "--allow-dirty" %in% args
+)
 version <- format(Sys.Date(), "%Y-%m-%d")
 output_root <- here::here("data-raw", "output")
 output_dir <- file.path(output_root, if (sample) "sample" else version)
@@ -108,7 +136,8 @@ data.table::setcolorder(
     "code_muni",
     "name_muni",
     "abbrev_state",
-    "name_region"
+    "name_region",
+    "muni_match"
   )
 )
 DBI::dbWriteTable(con, "stations", stations, overwrite = TRUE)
@@ -124,12 +153,13 @@ data.table::fwrite(
   file.path(report_dir, "input-by-year.csv")
 )
 validate_output(con, working_dir, report_dir)
-write_manifest(con, working_dir, version)
+write_manifest(con, working_dir, version, build_commit)
 DBI::dbDisconnect(con, shutdown = TRUE)
 unlink(c(
   file.path(working_dir, "final.duckdb"),
   file.path(working_dir, "final.duckdb.wal")
 ))
+unlink(file.path(working_dir, "duckdb-temp"), recursive = TRUE)
 if (!file.rename(working_dir, output_dir)) {
   cli::cli_abort("Could not finalize build directory.")
 }

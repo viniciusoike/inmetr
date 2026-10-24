@@ -1,6 +1,119 @@
 # Manifest and validation ----
 
-write_manifest <- function(con, output_dir, version) {
+get_build_commit <- function(repo_root = here::here(), allow_dirty = FALSE) {
+  git <- function(args) {
+    result <- suppressWarnings(system2(
+      "git",
+      c("-C", shQuote(repo_root), args),
+      stdout = TRUE,
+      stderr = TRUE
+    ))
+    if (!is.null(attr(result, "status"))) {
+      cli::cli_abort(
+        "Could not read Git build provenance in {.file {repo_root}}."
+      )
+    }
+    return(result)
+  }
+  commit <- git(c("rev-parse", "HEAD"))
+  if (length(commit) != 1L || !grepl("^[0-9a-f]{40}$", commit)) {
+    cli::cli_abort("Git HEAD is not a commit SHA in {.file {repo_root}}.")
+  }
+  if (!allow_dirty) {
+    dirty <- git(c(
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=all",
+      "--",
+      "data-raw/pipeline",
+      "data-raw/build.R"
+    ))
+    if (length(dirty)) {
+      cli::cli_abort(
+        "Pipeline code has uncommitted changes; commit it or pass --allow-dirty."
+      )
+    }
+  }
+  return(commit)
+}
+
+expected_schemas <- list(
+  hourly = c(
+    code_station = "VARCHAR",
+    timestamp_utc = "TIMESTAMP",
+    date_local = "DATE",
+    year = "INTEGER",
+    month = "INTEGER",
+    day = "INTEGER",
+    hour_local = "INTEGER",
+    stats::setNames(rep("DOUBLE", length(inmet_variables)), inmet_variables),
+    code_muni = "VARCHAR",
+    name_muni = "VARCHAR",
+    abbrev_state = "VARCHAR"
+  ),
+  daily = c(
+    code_station = "VARCHAR",
+    date = "DATE",
+    year = "INTEGER",
+    month = "INTEGER",
+    day = "INTEGER",
+    day_of_year = "INTEGER",
+    week = "INTEGER",
+    weekday = "INTEGER",
+    n_hours = "INTEGER",
+    temp_mean_c = "DOUBLE",
+    temp_min_c = "DOUBLE",
+    temp_max_c = "DOUBLE",
+    temp_dew_point_mean_c = "DOUBLE",
+    rel_humidity_mean_pct = "DOUBLE",
+    rel_humidity_min_pct = "DOUBLE",
+    rel_humidity_max_pct = "DOUBLE",
+    precip_total_mm = "DOUBLE",
+    radiation_total_kj_m2 = "DOUBLE",
+    pressure_station_mean_hpa = "DOUBLE",
+    wind_speed_mean_ms = "DOUBLE",
+    wind_gust_max_ms = "DOUBLE",
+    code_muni = "VARCHAR",
+    name_muni = "VARCHAR",
+    abbrev_state = "VARCHAR"
+  ),
+  stations = c(
+    code_station = "VARCHAR",
+    name_station = "VARCHAR",
+    status = "VARCHAR",
+    lat = "DOUBLE",
+    lon = "DOUBLE",
+    altitude_m = "DOUBLE",
+    date_start_operation = "DATE",
+    first_obs = "TIMESTAMP",
+    last_obs = "TIMESTAMP",
+    tz_offset_hours = "INTEGER",
+    code_muni = "VARCHAR",
+    name_muni = "VARCHAR",
+    abbrev_state = "VARCHAR",
+    name_region = "VARCHAR",
+    muni_match = "VARCHAR"
+  )
+)
+
+assert_parquet_schema <- function(con, path, table) {
+  schema <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT name, duckdb_type FROM parquet_schema('%s') WHERE name != 'duckdb_schema' ORDER BY column_id",
+      gsub("'", "''", path, fixed = TRUE)
+    )
+  )
+  actual <- stats::setNames(schema$duckdb_type, schema$name)
+  if (!identical(actual, expected_schemas[[table]])) {
+    cli::cli_abort(
+      "Parquet schema mismatch in {.file {path}} for {.val {table}}."
+    )
+  }
+  return(invisible(NULL))
+}
+
+write_manifest <- function(con, output_dir, version, build_commit) {
   tables <- list()
   for (table in c("hourly", "daily", "stations")) {
     paths <- if (table == "stations") {
@@ -18,6 +131,7 @@ write_manifest <- function(con, output_dir, version) {
       cli::cli_abort("No Parquet files for {.val {table}}.")
     }
     files <- lapply(paths, function(path) {
+      assert_parquet_schema(con, path, table)
       normalized <- normalizePath(path, winslash = "/")
       relative <- substring(
         normalized,
@@ -37,22 +151,18 @@ write_manifest <- function(con, output_dir, version) {
         row_count = unname(n)
       )
     })
-    schema <- DBI::dbGetQuery(
-      con,
-      sprintf(
-        "DESCRIBE SELECT * FROM read_parquet('%s')",
-        gsub("'", "''", paths[[1]], fixed = TRUE)
-      )
-    )
+    schema <- expected_schemas[[table]]
     tables[[table]] <- list(
       files = files,
-      schema = lapply(seq_len(nrow(schema)), function(i) {
-        list(name = schema$column_name[[i]], type = schema$column_type[[i]])
+      schema = lapply(seq_along(schema), function(i) {
+        list(name = names(schema)[[i]], type = unname(schema[[i]]))
       })
     )
   }
   manifest <- list(
     version = version,
+    schema_version = 1L,
+    build_commit = build_commit,
     retrieved_at = NULL,
     source_url = "https://portal.inmet.gov.br/dadoshistoricos",
     tables = tables
