@@ -20,13 +20,41 @@ inmet_variables <- c(
   "wind_speed_ms"
 )
 
-parse_metadata_number <- function(value, allow_missing = FALSE) {
+inmet_header_measurements <- c(
+  "PRECIPITAÇÃO TOTAL, HORÁRIO (mm)",
+  "PRESSAO ATMOSFERICA AO NIVEL DA ESTACAO, HORARIA (mB)",
+  "PRESSÃO ATMOSFERICA MAX.NA HORA ANT. (AUT) (mB)",
+  "PRESSÃO ATMOSFERICA MIN. NA HORA ANT. (AUT) (mB)",
+  "RADIACAO GLOBAL (KJ/m²)",
+  "TEMPERATURA DO AR - BULBO SECO, HORARIA (°C)",
+  "TEMPERATURA DO PONTO DE ORVALHO (°C)",
+  "TEMPERATURA MÁXIMA NA HORA ANT. (AUT) (°C)",
+  "TEMPERATURA MÍNIMA NA HORA ANT. (AUT) (°C)",
+  "TEMPERATURA ORVALHO MAX. NA HORA ANT. (AUT) (°C)",
+  "TEMPERATURA ORVALHO MIN. NA HORA ANT. (AUT) (°C)",
+  "UMIDADE REL. MAX. NA HORA ANT. (AUT) (%)",
+  "UMIDADE REL. MIN. NA HORA ANT. (AUT) (%)",
+  "UMIDADE RELATIVA DO AR, HORARIA (%)",
+  "VENTO, DIREÇÃO HORARIA (gr) (° (gr))",
+  "VENTO, RAJADA MAXIMA (m/s)",
+  "VENTO, VELOCIDADE HORARIA (m/s)"
+)
+
+parse_metadata_number <- function(
+  value,
+  allow_missing = FALSE,
+  path = "<value>",
+  name = "value"
+) {
   if (allow_missing && value == "F") {
     return(NA_real_)
   }
   result <- suppressWarnings(as.numeric(sub(",", ".", value, fixed = TRUE)))
   if (is.na(result)) {
-    cli::cli_abort("Invalid station coordinate or altitude: {.val {value}}.")
+    cli::cli_abort(
+      "Invalid station coordinate or altitude {.arg {name}} in {.file {path}}: {.val {value}}.",
+      call = rlang::caller_env()
+    )
   }
   return(result)
 }
@@ -62,19 +90,11 @@ read_inmet_header <- function(path) {
     cli::cli_abort("Unknown INMET metadata header in {.file {path}}.")
   }
   fields <- strsplit(lines[[9]], ";", fixed = TRUE)[[1]]
-  reference <- iconv(
-    readLines(
-      here::here("data-raw", "pipeline", "tests", "fixtures", "old.CSV"),
-      n = 9L,
-      encoding = "bytes"
-    )[[9]],
-    from = "ISO-8859-1",
-    to = "UTF-8"
-  )
-  reference <- strsplit(reference, ";", fixed = TRUE)[[1]]
+  measurements <- fields[3:19]
+  measurements[[5]] <- sub("Kj/m", "KJ/m", measurements[[5]], fixed = TRUE)
   if (
     length(fields) != 19L ||
-      !identical(tolower(fields[3:19]), tolower(reference[3:19])) ||
+      !identical(measurements, inmet_header_measurements) ||
       !identical(fields[1:2], c("DATA (YYYY-MM-DD)", "HORA (UTC)")) &&
         !identical(fields[1:2], c("Data", "Hora UTC"))
   ) {
@@ -93,9 +113,14 @@ read_inmet_header <- function(path) {
     name_region = values[[1]],
     abbrev_state = values[[2]],
     name_station = values[[3]],
-    lat = parse_metadata_number(values[[5]]),
-    lon = parse_metadata_number(values[[6]]),
-    altitude_m = parse_metadata_number(values[[7]], allow_missing = TRUE),
+    lat = parse_metadata_number(values[[5]], path = path, name = "latitude"),
+    lon = parse_metadata_number(values[[6]], path = path, name = "longitude"),
+    altitude_m = parse_metadata_number(
+      values[[7]],
+      allow_missing = TRUE,
+      path = path,
+      name = "altitude"
+    ),
     date_start_operation = values[[8]],
     format = if (fields[[1]] == "Data") "new" else "old"
   ))
@@ -151,7 +176,17 @@ read_inmet_csv <- function(path) {
   dat[, c("date_utc", "hour_utc") := NULL]
   dat[, code_station := metadata$code_station]
   for (column in inmet_variables) {
-    data.table::set(dat, j = column, value = as.numeric(dat[[column]]))
+    original <- dat[[column]]
+    numeric <- suppressWarnings(as.numeric(original))
+    invalid <- which(!is.na(original) & is.na(numeric))
+    if (length(invalid)) {
+      token <- as.character(original[[invalid[[1]]]])
+      cli::cli_abort(
+        "Invalid measurement in {.file {path}}, {.arg {column}}: {.val {token}}.",
+        call = rlang::caller_env()
+      )
+    }
+    data.table::set(dat, j = column, value = numeric)
   }
   data.table::setcolorder(
     dat,

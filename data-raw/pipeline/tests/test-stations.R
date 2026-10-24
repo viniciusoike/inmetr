@@ -17,3 +17,12 @@ testthat::test_that("standard offsets keep mainland and offshore stations separa
   )
   testthat::expect_equal(actual, c(-3L, -2L, -5L, -4L, -5L, -3L))
 })
+
+testthat::test_that("unmatched stations require an explicit exception", {
+  testthat::expect_silent(check_unmatched_stations("C891"))
+  testthat::expect_error(check_unmatched_stations("A999"), "A999")
+  testthat::expect_equal(
+    station_offset(NA_character_, -79.49417, -84, NA_character_, FALSE),
+    -3L
+  )
+})

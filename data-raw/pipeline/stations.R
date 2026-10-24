@@ -60,13 +60,14 @@ read_station_catalog <- function() {
 station_offset <- function(abbrev_state, lon, lat, name_muni, offshore) {
   offset <- rep(-3L, length(lon))
   offset[abbrev_state %in% c("MT", "MS", "RO", "RR")] <- -4L
-  offset[abbrev_state == "AC"] <- -5L
+  offset[abbrev_state %in% "AC"] <- -5L
   # The 2013 legal boundary runs from Tabatinga to Porto Acre.
   boundary_lon <- -69.94 + (lat + 4.23) * (1.96 / -5.76)
-  offset[abbrev_state == "AM" & lon <= boundary_lon] <- -5L
-  offset[abbrev_state == "AM" & lon > boundary_lon] <- -4L
+  offset[abbrev_state %in% "AM" & lon <= boundary_lon] <- -5L
+  offset[abbrev_state %in% "AM" & lon > boundary_lon] <- -4L
   offset[
-    name_muni == "Fernando de Noronha" |
+    name_muni %in%
+      "Fernando de Noronha" |
       (offshore &
         lon > -40 &
         lat < 1 &
@@ -74,6 +75,17 @@ station_offset <- function(abbrev_state, lon, lat, name_muni, offshore) {
         abbrev_state %in% c("PE", "RN", "ES"))
   ] <- -2L
   return(offset)
+}
+
+check_unmatched_stations <- function(codes) {
+  # C891 is the Antarctic station and has no Brazilian municipality.
+  unexpected <- setdiff(codes, "C891")
+  if (length(unexpected)) {
+    cli::cli_abort(
+      "Unmatched stations need a documented exception: {paste(unexpected, collapse = ', ')}."
+    )
+  }
+  return(invisible(NULL))
 }
 
 build_stations <- function(files, report_dir) {
@@ -169,17 +181,31 @@ build_stations <- function(files, report_dir) {
     cli::cli_abort("Ambiguous municipality spatial join.")
   }
   missing <- which(is.na(joined$code_muni))
+  nearest_match <- integer()
+  distance_km <- numeric()
   if (length(missing)) {
     nearest <- sf::st_nearest_feature(points[missing, ], municipalities)
-    joined$code_muni[missing] <- municipalities$code_muni[nearest]
-    joined$name_muni[missing] <- municipalities$name_muni[nearest]
-    joined$abbrev_state.y[missing] <- municipalities$abbrev_state[nearest]
-    joined$name_region.y[missing] <- municipalities$name_region[nearest]
+    distance_km <- as.numeric(sf::st_distance(
+      points[missing, ],
+      municipalities[nearest, ],
+      by_element = TRUE
+    )) /
+      1000
+    nearest_match <- missing[distance_km <= 650]
+    nearest <- nearest[distance_km <= 650]
+    joined$code_muni[nearest_match] <- municipalities$code_muni[nearest]
+    joined$name_muni[nearest_match] <- municipalities$name_muni[nearest]
+    joined$abbrev_state.y[nearest_match] <- municipalities$abbrev_state[nearest]
+    joined$name_region.y[nearest_match] <- municipalities$name_region[nearest]
   }
+  unmatched <- which(is.na(joined$code_muni))
+  check_unmatched_stations(stations$code_station[unmatched])
   data.table::fwrite(
     data.table::data.table(
       code_station = stations$code_station[missing],
       name_station = stations$name_station[missing],
+      distance_km = distance_km,
+      muni_match = ifelse(missing %in% nearest_match, "nearest", "none"),
       assigned_code_muni = joined$code_muni[missing],
       assigned_name_muni = joined$name_muni[missing]
     ),
@@ -189,15 +215,19 @@ build_stations <- function(files, report_dir) {
   stations[, name_muni := joined$name_muni]
   stations[, abbrev_state := joined$abbrev_state.y]
   stations[, name_region := joined$name_region.y]
+  stations[, muni_match := "polygon"]
+  stations[nearest_match, muni_match := "nearest"]
+  stations[unmatched, muni_match := "none"]
   stations[,
     tz_offset_hours := station_offset(
       abbrev_state,
       lon,
       lat,
       name_muni,
-      seq_len(.N) %in% missing
+      seq_len(.N) %in% nearest_match
     )
   ]
+  stations[code_station == "C891", tz_offset_hours := -3L]
   stations[,
     c(
       "csv_name",
