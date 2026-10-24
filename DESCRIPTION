@@ -1,7 +1,7 @@
 Package: inmetr
 Title: Access Brazilian Automatic Weather Station Data
 Version: 0.1.0
-Depends: R (>= 3.5.0)
+Depends: R (>= 4.1.0)
 Authors@R: person("Vinicius", "Reginatto", email = "viniciusoike@gmail.com", role = c("aut", "cre"))
 Description: Download verified INMET automatic weather station data, query
     hourly and daily observations lazily with DuckDB, and find stations near
@@ -22,6 +22,7 @@ Imports:
     duckdb,
     jsonlite,
     rlang,
+    stringi,
     tibble
 Suggests:
     testthat (>= 3.0.0),
