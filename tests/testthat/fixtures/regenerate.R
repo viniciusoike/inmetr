@@ -1,12 +1,12 @@
 # Regenerate with Rscript tests/testthat/fixtures/regenerate.R
 root <- "tests/testthat/fixtures"
-con <- DBI::dbConnect(duckdb::duckdb(), dbdir = ":memory:", shared_home = FALSE)
+con <- DBI::dbConnect(duckdb::duckdb(shared_home = FALSE), dbdir = ":memory:")
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
 write_part <- function(dat, path) {
   dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
   DBI::dbWriteTable(con, "fixture", dat, overwrite = TRUE)
   DBI::dbExecute(con, sprintf("COPY fixture TO '%s' (FORMAT parquet)", path))
-  DBI::dbRemoveTable(con, "fixture")
+  return(DBI::dbRemoveTable(con, "fixture"))
 }
 for (year in c(2023L, 2024L)) {
   write_part(
@@ -76,7 +76,7 @@ for (table in c("daily", "hourly", "stations")) {
   )
   manifest$tables[[table]] <- list(
     files = lapply(files, function(file) {
-      list(
+      return(list(
         path = file,
         size = unname(file.info(file.path(root, file))$size),
         sha256 = digest::digest(file = file.path(root, file), algo = "sha256"),
@@ -89,10 +89,10 @@ for (table in c("daily", "hourly", "stations")) {
             )
           )$n
         )
-      )
+      ))
     }),
     schema = lapply(seq_len(nrow(schema)), function(i) {
-      list(name = schema$name[[i]], type = schema$duckdb_type[[i]])
+      return(list(name = schema$name[[i]], type = schema$duckdb_type[[i]]))
     })
   )
 }

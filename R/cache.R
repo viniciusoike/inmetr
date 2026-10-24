@@ -31,7 +31,8 @@ inmet_cache_clear <- function() {
   }
   if (interactive()) {
     cli::cli_inform("Delete cached inmetr data at {.path {path}}?")
-    if (!identical(tolower(readline("Type yes to confirm: ")), "yes")) {
+    cli::cli_inform("Type {.val yes} to confirm:")
+    if (!identical(tolower(readline("")), "yes")) {
       return(invisible(FALSE))
     }
   }
@@ -43,12 +44,15 @@ inmet_cache_clear <- function() {
 }
 
 .asset_name <- function(path) {
-  if (path %in% c("stations.parquet", "manifest.json")) {
+  if (identical(path, "stations.parquet")) {
     return(path)
+  }
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    cli::cli_abort("Invalid manifest file path.", call = rlang::caller_env())
   }
   pieces <- regmatches(
     path,
-    regexec("^(daily|hourly)/year=([0-9]{4})/part-[^/]+[.]parquet$", path)
+    regexec("^(daily|hourly)/year=([0-9]{4})/part-0+[.]parquet$", path)
   )[[1]]
   if (length(pieces) != 3L) {
     cli::cli_abort(
@@ -59,56 +63,86 @@ inmet_cache_clear <- function() {
   return(sprintf("%s-%s.parquet", pieces[[2]], pieces[[3]]))
 }
 
-.fetch_asset <- function(asset, destination) {
+.fetch_asset <- function(asset, destination, sha256 = NULL) {
+  call <- rlang::caller_env()
   base <- getOption("inmetr.base_url", .release_url)
   if (
     !is.character(base) || length(base) != 1L || is.na(base) || !nzchar(base)
   ) {
     cli::cli_abort(
       "{.opt inmetr.base_url} must be one nonempty URL or directory.",
-      call = rlang::caller_env()
+      call = call
     )
   }
   dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
+  temp <- tempfile(
+    pattern = paste0(basename(destination), "-"),
+    tmpdir = dirname(destination)
+  )
+  on.exit(unlink(temp), add = TRUE)
   if (startsWith(base, "file://")) {
     base <- utils::URLdecode(substring(base, 8L))
   }
   if (dir.exists(base)) {
-    if (!file.copy(file.path(base, asset), destination, overwrite = TRUE)) {
+    if (!file.copy(file.path(base, asset), temp)) {
       cli::cli_abort(
         "Could not copy {.file {asset}} from {.path {base}}.",
-        call = rlang::caller_env()
+        call = call
       )
     }
   } else {
     url <- paste0(sub("/$", "", base), "/", asset)
+    timeout <- getOption("timeout", 60)
+    options(timeout = max(3600, timeout))
+    on.exit(options(timeout = timeout), add = TRUE)
     status <- tryCatch(
       suppressWarnings(utils::download.file(
         url,
-        destination,
+        temp,
         mode = "wb",
         quiet = TRUE
       )),
       error = function(e) {
-        unlink(destination)
         cli::cli_abort(
           "Could not download {.file {asset}}: {conditionMessage(e)}",
-          call = rlang::caller_env()
+          call = call
         )
       }
     )
-    if (!identical(status, 0L) || !file.exists(destination)) {
-      unlink(destination)
+    if (!identical(status, 0L) || !file.exists(temp)) {
       cli::cli_abort(
         "Could not download {.file {asset}} from {.url {url}}.",
-        call = rlang::caller_env()
+        call = call
       )
     }
+  }
+  if (identical(asset, "manifest.json")) {
+    tryCatch(
+      jsonlite::fromJSON(temp, simplifyVector = FALSE),
+      error = function(e) {
+        cli::cli_abort(
+          "Invalid downloaded {.file manifest.json}: {conditionMessage(e)}",
+          call = call
+        )
+      }
+    )
+  } else if (
+    !is.null(sha256) &&
+      !identical(digest::digest(file = temp, algo = "sha256"), sha256)
+  ) {
+    cli::cli_abort("SHA-256 mismatch for {.file {asset}}.", call = call)
+  }
+  if (!file.rename(temp, destination)) {
+    cli::cli_abort(
+      "Could not save {.file {asset}} to {.path {destination}}.",
+      call = call
+    )
   }
   return(destination)
 }
 
 .manifest <- function() {
+  call <- rlang::caller_env()
   path <- file.path(inmet_cache_dir(), .data_version, "manifest.json")
   if (!file.exists(path)) {
     .fetch_asset("manifest.json", path)
@@ -116,10 +150,17 @@ inmet_cache_clear <- function() {
   manifest <- tryCatch(
     jsonlite::fromJSON(path, simplifyVector = FALSE),
     error = function(e) {
-      cli::cli_abort(
-        "Invalid cached {.file manifest.json}: {conditionMessage(e)}",
-        call = rlang::caller_env()
-      )
+      unlink(path)
+      .fetch_asset("manifest.json", path)
+      return(tryCatch(
+        jsonlite::fromJSON(path, simplifyVector = FALSE),
+        error = function(e) {
+          cli::cli_abort(
+            "Invalid cached {.file manifest.json}: {conditionMessage(e)}",
+            call = call
+          )
+        }
+      ))
     }
   )
   if (
@@ -132,21 +173,22 @@ inmet_cache_clear <- function() {
       call = rlang::caller_env()
     )
   }
+  for (table in manifest$tables) {
+    for (entry in table$files) {
+      .asset_name(entry$path)
+    }
+  }
   return(manifest)
 }
 
 .ensure_file <- function(entry) {
+  asset <- .asset_name(entry$path)
   path <- file.path(inmet_cache_dir(), .data_version, entry$path)
-  if (!file.exists(path)) {
-    .fetch_asset(.asset_name(entry$path), path)
-  }
-  actual <- digest::digest(file = path, algo = "sha256")
-  if (!identical(actual, entry$sha256)) {
+  if (file.exists(path) && !isTRUE(file.info(path)$size == entry$size)) {
     unlink(path)
-    cli::cli_abort(
-      "SHA-256 mismatch for {.file {entry$path}}; the cached file was deleted.",
-      call = rlang::caller_env()
-    )
+  }
+  if (!file.exists(path)) {
+    .fetch_asset(asset, path, sha256 = entry$sha256)
   }
   return(path)
 }

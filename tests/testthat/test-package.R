@@ -11,14 +11,17 @@ test_that("cache downloads once and validates files", {
   expect_error(read_inmet("daily", 1e12), "2023.*2024")
 })
 
-test_that("file URLs and cached hashes work offline", {
+test_that("file URLs work offline and damaged cached files are replaced", {
   assets <- local_fixture()
   options(inmetr.base_url = paste0("file://", assets))
   expect_equal(nrow(inmet_stations()), 3L)
   path <- file.path(inmet_cache_dir(), "2026-10-24", "stations.parquet")
   writeBin(charToRaw("bad"), path)
-  expect_error(inmet_stations(), "SHA-256")
-  expect_false(file.exists(path))
+  expect_equal(nrow(inmet_stations()), 3L)
+  expect_equal(
+    file.info(path)$size,
+    file.info(file.path(assets, "stations.parquet"))$size
+  )
 })
 
 test_that("hash mismatch deletes the downloaded file", {
@@ -32,6 +35,127 @@ test_that("hash mismatch deletes the downloaded file", {
     "year=2024",
     "part-0.parquet"
   )))
+})
+
+test_that("downloads publish only validated files", {
+  assets <- local_fixture()
+  manifest_path <- file.path(inmet_cache_dir(), "2026-10-24", "manifest.json")
+  writeLines("{incomplete", file.path(assets, "manifest.json"))
+  expect_error(inmet_stations(), "Invalid.*manifest.json")
+  expect_false(file.exists(manifest_path))
+  expect_length(
+    list.files(
+      dirname(manifest_path),
+      pattern = "^manifest.json-",
+      all.files = TRUE
+    ),
+    0L
+  )
+})
+
+test_that("download failures leave no partial cache file", {
+  assets <- local_fixture()
+  unlink(file.path(assets, "stations.parquet"))
+  expect_error(inmet_stations(), "Could not copy")
+  cache <- file.path(inmet_cache_dir(), "2026-10-24")
+  expect_false(file.exists(file.path(cache, "stations.parquet")))
+  expect_length(
+    list.files(cache, pattern = "^stations.parquet-", recursive = TRUE),
+    0L
+  )
+})
+
+test_that("an interrupted copy removes its temporary file", {
+  local_fixture()
+  testthat::local_mocked_bindings(
+    file.copy = function(from, to, ...) {
+      writeBin(charToRaw("partial"), to)
+      return(FALSE)
+    },
+    .package = "base"
+  )
+  error <- tryCatch(inmet_stations(), error = identity)
+  expect_match(conditionMessage(error), "Could not copy")
+  cache <- file.path(inmet_cache_dir(), "2026-10-24")
+  expect_length(
+    list.files(cache, pattern = "^manifest.json-", all.files = TRUE),
+    0L
+  )
+  expect_false(file.exists(file.path(cache, "manifest.json")))
+})
+
+test_that("download errors keep the caller and restore the timeout", {
+  withr::local_options(inmetr.base_url = "file:///definitely/not/inmetr")
+  timeout <- getOption("timeout")
+  invoke <- function() inmetr:::.fetch_asset("manifest.json", tempfile())
+  error <- tryCatch(invoke(), error = identity)
+  expect_match(conditionMessage(error), "Could not download")
+  expect_identical(conditionCall(error), quote(invoke()))
+  expect_identical(getOption("timeout"), timeout)
+})
+
+test_that("a corrupt cached manifest is downloaded again once", {
+  local_fixture()
+  manifest_path <- file.path(inmet_cache_dir(), "2026-10-24", "manifest.json")
+  dir.create(dirname(manifest_path), recursive = TRUE)
+  writeLines("{incomplete", manifest_path)
+  expect_equal(nrow(inmet_stations()), 3L)
+  expect_silent(jsonlite::fromJSON(manifest_path))
+})
+
+test_that("cached data use size checks and size mismatches download again", {
+  assets <- local_fixture()
+  inmet_stations()
+  path <- file.path(inmet_cache_dir(), "2026-10-24", "stations.parquet")
+  entry <- jsonlite::fromJSON(
+    file.path(assets, "manifest.json"),
+    simplifyVector = FALSE
+  )$tables$stations$files[[1]]
+  original <- readBin(path, "raw", n = file.info(path)$size)
+  changed <- original
+  changed[[1]] <- as.raw(bitwXor(as.integer(changed[[1]]), 1L))
+  writeBin(changed, path)
+  expect_identical(inmetr:::.ensure_file(entry), path)
+  expect_identical(readBin(path, "raw", n = 1L), changed[[1]])
+  writeBin(charToRaw("bad"), path)
+  expect_identical(inmetr:::.ensure_file(entry), path)
+  expect_identical(readBin(path, "raw", n = 1L), original[[1]])
+})
+
+test_that("manifest paths are checked before cache files are touched", {
+  local_fixture()
+  outside <- tempfile("outside-")
+  writeLines("keep", outside)
+  entry <- list(path = "../../outside", size = 1, sha256 = "bad")
+  expect_error(inmetr:::.ensure_file(entry), "Invalid manifest file path")
+  expect_identical(readLines(outside), "keep")
+  expect_error(
+    inmetr:::.ensure_file(list(path = "hourly/year=2024/part-evil.parquet")),
+    "Invalid manifest file path"
+  )
+  assets <- getOption("inmetr.base_url")
+  manifest <- jsonlite::fromJSON(
+    file.path(assets, "manifest.json"),
+    simplifyVector = FALSE
+  )
+  manifest$tables$hourly$files[[1]]$path <- "../../outside"
+  jsonlite::write_json(
+    manifest,
+    file.path(assets, "manifest.json"),
+    auto_unbox = TRUE
+  )
+  expect_error(read_inmet("daily", 2024), "Invalid manifest file path")
+})
+
+test_that("DuckDB extension and secret storage stay outside the user home", {
+  con <- inmetr:::.get_connection()
+  settings <- DBI::dbGetQuery(
+    con,
+    "SELECT current_setting('extension_directory') AS extension_directory, current_setting('secret_directory') AS secret_directory"
+  )
+  home <- normalizePath(path.expand("~"), winslash = "/")
+  expect_false(startsWith(settings$extension_directory, paste0(home, "/")))
+  expect_false(startsWith(settings$secret_directory, paste0(home, "/")))
 })
 
 test_that("lazy filtering and stations work offline", {

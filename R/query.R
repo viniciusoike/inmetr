@@ -3,9 +3,8 @@
 .get_connection <- function() {
   if (is.null(.connection$con) || !DBI::dbIsValid(.connection$con)) {
     .connection$con <- DBI::dbConnect(
-      duckdb::duckdb(),
-      dbdir = ":memory:",
-      shared_home = FALSE
+      duckdb::duckdb(shared_home = FALSE),
+      dbdir = ":memory:"
     )
   }
   return(.connection$con)
@@ -22,7 +21,9 @@
   con <- .get_connection()
   quoted <- vapply(
     paths,
-    function(path) as.character(DBI::dbQuoteString(con, normalizePath(path))),
+    function(path) {
+      return(as.character(DBI::dbQuoteString(con, normalizePath(path))))
+    },
     character(1)
   )
   expected_names <- vapply(schema, `[[`, character(1), "name")
@@ -64,7 +65,7 @@ read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
   entries <- manifest$tables[[table]]$files
   available <- as.integer(vapply(
     entries,
-    function(entry) sub(".*year=([0-9]{4})/.*", "\\1", entry$path),
+    function(entry) return(sub(".*year=([0-9]{4})/.*", "\\1", entry$path)),
     character(1)
   ))
   if (is.null(years)) {
