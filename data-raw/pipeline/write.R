@@ -53,7 +53,7 @@ write_hourly_year <- function(
     )
   }
   variables <- paste(inmet_variables, collapse = ", ")
-  hourly_dir <- file.path(output_dir, "hourly")
+  hourly_dir <- file.path(output_dir, "hourly", paste0("year=", year))
   dir.create(hourly_dir, recursive = TRUE, showWarnings = FALSE)
   query <- sprintf(
     "
@@ -71,12 +71,11 @@ write_hourly_year <- function(
       ) WHERE row_num = 1) r
       JOIN station_lookup s USING (code_station)
       ORDER BY r.code_station, r.timestamp_utc
-    ) TO '%s' (FORMAT parquet, COMPRESSION zstd, PARTITION_BY (year),
-      WRITE_PARTITION_COLUMNS true, APPEND true,
-      FILENAME_PATTERN 'part-{uuid}')",
+    ) TO '%s' (FORMAT parquet, COMPRESSION zstd)",
     variables,
-    gsub("'", "''", hourly_dir, fixed = TRUE)
+    gsub("'", "''", file.path(hourly_dir, "part-000.parquet"), fixed = TRUE)
   )
+  DBI::dbExecute(con, "SET threads = 1")
   DBI::dbExecute(con, query)
   return(data.table::data.table(
     year = year,
@@ -138,6 +137,7 @@ write_daily <- function(con, output_dir) {
     hourly,
     gsub("'", "''", daily_dir, fixed = TRUE)
   )
+  DBI::dbExecute(con, "SET threads = 1")
   DBI::dbExecute(con, query)
   return(invisible(NULL))
 }
