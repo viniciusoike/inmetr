@@ -34,6 +34,12 @@ inmet_cache_dir <- function() {
 #' inmet_cache_clear()
 inmet_cache_clear <- function(ask = interactive()) {
   call <- sys.call()
+  if (!rlang::is_bool(ask)) {
+    cli::cli_abort(
+      "{.arg ask} must be a single non-missing logical.",
+      call = call
+    )
+  }
   path <- file.path(.cache_dir(call), .data_version)
   if (!dir.exists(path)) {
     return(invisible(FALSE))
@@ -41,7 +47,7 @@ inmet_cache_clear <- function(ask = interactive()) {
   if (ask) {
     cli::cli_inform("Delete cached inmetr data at {.path {path}}?")
     cli::cli_inform("Type {.val yes} to confirm:")
-    if (!identical(tolower(readline("")), "yes")) {
+    if (!identical(tolower(.read_cache_confirmation()), "yes")) {
       return(invisible(FALSE))
     }
   }
@@ -53,6 +59,10 @@ inmet_cache_clear <- function(ask = interactive()) {
     )
   }
   return(invisible(TRUE))
+}
+
+.read_cache_confirmation <- function() {
+  return(readline(""))
 }
 
 .asset_name <- function(path, call = rlang::caller_env()) {

@@ -281,3 +281,46 @@ test_that("cache option and clear use the selected cache", {
   inmet_cache_clear(ask = FALSE)
   expect_false(dir.exists(file.path(inmet_cache_dir(), "2026-10-24")))
 })
+
+test_that("cache clear defaults to asking in interactive sessions", {
+  expect_identical(formals(inmet_cache_clear)$ask, quote(interactive()))
+})
+
+test_that("cache clear keeps files unless the answer is yes", {
+  local_fixture()
+  inmet_stations()
+  path <- file.path(inmet_cache_dir(), "2026-10-24")
+  testthat::local_mocked_bindings(
+    .read_cache_confirmation = function() "no"
+  )
+  expect_false(inmet_cache_clear(ask = TRUE))
+  expect_true(dir.exists(path))
+  expect_true(file.exists(file.path(path, "stations.parquet")))
+})
+
+test_that("cache clear deletes files after a yes answer", {
+  local_fixture()
+  inmet_stations()
+  path <- file.path(inmet_cache_dir(), "2026-10-24")
+  testthat::local_mocked_bindings(
+    .read_cache_confirmation = function() "yes"
+  )
+  expect_true(inmet_cache_clear(ask = TRUE))
+  expect_false(dir.exists(path))
+})
+
+test_that("cache clear rejects invalid ask values before deleting files", {
+  local_fixture()
+  inmet_stations()
+  path <- file.path(inmet_cache_dir(), "2026-10-24")
+  for (value in list(NA, NULL, c(TRUE, FALSE), "yes")) {
+    error <- tryCatch(inmet_cache_clear(ask = value), error = identity)
+    expect_s3_class(error, "rlang_error")
+    expect_match(conditionMessage(error), "`ask`")
+    expect_identical(
+      conditionCall(error),
+      quote(inmet_cache_clear(ask = value))
+    )
+    expect_true(dir.exists(path))
+  }
+})
