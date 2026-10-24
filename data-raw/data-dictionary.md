@@ -24,7 +24,7 @@ Source: [INMET historical observations](https://portal.inmet.gov.br/dadoshistori
 | `wind_direction_deg` | Hourly wind direction, degrees |
 | `wind_gust_ms` | Previous-hour maximum gust, m/s |
 | `wind_speed_ms` | Hourly wind speed, m/s |
-| `code_muni`, `name_muni`, `abbrev_state` | IBGE municipality code, name, and state; joined from station coordinates |
+| `code_muni`, `name_muni`, `abbrev_state` | IBGE municipality code (integer), name, and state; inherited from the station |
 
 ## Daily table
 
@@ -49,7 +49,7 @@ Daily groups use station and `date_local`. All available hours contribute. SQL a
 | `pressure_station_mean_hpa` | Mean station pressure, hPa |
 | `wind_speed_mean_ms` | Mean hourly wind speed, m/s |
 | `wind_gust_max_ms` | Maximum previous-hour gust, m/s |
-| `code_muni`, `name_muni`, `abbrev_state` | Station's IBGE municipality code, name, and state |
+| `code_muni`, `name_muni`, `abbrev_state` | Station's IBGE municipality code (integer), name, and state |
 
 ## Stations table
 
@@ -63,11 +63,11 @@ Daily groups use station and `date_local`. All available hours contribute. SQL a
 | `date_start_operation` | Catalog start date, or latest CSV metadata date, when parseable |
 | `first_obs`, `last_obs` | Earliest and latest UTC observations in the included CSVs |
 | `tz_offset_hours` | Fixed standard offset from UTC, hours |
-| `muni_match` | `polygon` when inside a 2022 municipality, `nearest` when matched within 650 km, `none` when no municipality is assigned |
-| `code_muni`, `name_muni`, `abbrev_state`, `name_region` | IBGE 2022 municipality identity and region at the station's coordinates |
+| `muni_match` | `polygon` when inside a 2022 municipality, `manual` for a documented municipality assignment, `none` for a documented station without a Brazilian municipality |
+| `code_muni`, `name_muni`, `abbrev_state`, `name_region` | IBGE 2022 municipality code (integer), name, state, and region |
 
-Municipalities come from a point-in-polygon join against `geobr::read_municipality(year = 2022)`. The nearest fallback is limited to 650 km, just above A302's 624 km distance from Fernando de Noronha; every fallback distance and outcome is listed in `reports/nearest-municipalities.csv`. C891 (Antarctica) is the only permitted unmatched station: its municipality, state, and region are missing, while its standard offset is independently fixed at UTC−3. Any other unmatched station stops the build until its location is reviewed and an exception is documented in code and here. Hourly and daily municipality fields inherit the station's missing values.
+Municipalities come from a point-in-polygon join against `geobr::read_municipality(year = 2022)`. The exception table in `pipeline/stations.R` maps A302 (São Pedro e São Paulo archipelago) to Fernando de Noronha/PE, IBGE code 2605459, because that district administers the archipelago. C891 (Criosfera, Antarctica) has no Brazilian municipality, state, or region; its standard offset is independently fixed at UTC−3. For stations outside all polygons, `reports/nearest-municipalities.csv` records the nearest municipality and distance as diagnostics only. Any station absent from the exception table stops the build with its code, name, coordinates, and nearest municipality and distance. Hourly and daily municipality fields inherit the station's values, including missing values.
 
-Local dates use fixed standard time with no daylight saving adjustment, including historical observations. The [Brazilian legal time-zone map](https://www2.camara.leg.br/legin/fed/lei/2013/lei-12876-30-outubro-2013-777336-publicacaooriginal-141612-pl.html) gives UTC−3 for most states and all Pará, UTC−4 for MT/MS/RO/RR and eastern Amazonas, and UTC−5 for Acre and western Amazonas. The Amazonas boundary is approximated by a straight line from Tabatinga to Porto Acre using station coordinates. Fernando de Noronha and points outside municipality polygons east of 40°W in PE/RN/ES use UTC−2. These are present-day standard offsets applied consistently to every year, not historical civil-time reconstruction.
+Local dates use fixed standard time with no daylight saving adjustment, including historical observations. The [Brazilian legal time-zone map](https://www2.camara.leg.br/legin/fed/lei/2013/lei-12876-30-outubro-2013-777336-publicacaooriginal-141612-pl.html) gives UTC−3 for most states and all Pará, UTC−4 for MT/MS/RO/RR and eastern Amazonas, and UTC−5 for Acre and western Amazonas. The Amazonas boundary is approximated by a straight line from Tabatinga to Porto Acre using station coordinates. Fernando de Noronha and A302 use UTC−2. These are present-day standard offsets applied consistently to every year, not historical civil-time reconstruction.
 
-`manifest.json` records the build version, schema version (currently 1), Git HEAD as `build_commit`, source URL, verified physical Parquet schema, file sizes, SHA-256 digests, and row counts. `retrieved_at` is `null` because the downloaded files have no reliable retrieval timestamp. Full builds reject uncommitted pipeline or build-script changes unless `--allow-dirty` is passed; sample builds permit them.
+`manifest.json` records the build version, schema version (currently 2), Git HEAD as `build_commit`, source URL, verified physical Parquet schema, file sizes, SHA-256 digests, and row counts. `retrieved_at` is `null` because the downloaded files have no reliable retrieval timestamp. Full builds reject uncommitted pipeline or build-script changes unless `--allow-dirty` is passed; sample builds permit them.

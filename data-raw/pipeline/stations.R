@@ -77,15 +77,135 @@ station_offset <- function(abbrev_state, lon, lat, name_muni, offshore) {
   return(offset)
 }
 
-check_unmatched_stations <- function(codes) {
-  # C891 is the Antarctic station and has no Brazilian municipality.
-  unexpected <- setdiff(codes, "C891")
-  if (length(unexpected)) {
-    cli::cli_abort(
-      "Unmatched stations need a documented exception: {paste(unexpected, collapse = ', ')}."
+# Municipality exceptions ----
+
+municipality_exceptions <- data.table::data.table(
+  code_station = c("A302", "C891"),
+  code_muni = c(2605459L, NA_integer_),
+  reason = c(
+    "São Pedro e São Paulo archipelago is administered by Fernando de Noronha district",
+    "Criosfera is in Antarctica, outside Brazil"
+  )
+)
+
+assign_station_municipalities <- function(
+  stations,
+  municipalities,
+  report_dir
+) {
+  stations <- data.table::copy(stations)
+  points <- sf::st_as_sf(
+    stations[, .(code_station, name_station, lat, lon)],
+    coords = c("lon", "lat"),
+    crs = 4674,
+    remove = FALSE
+  )
+  joined <- sf::st_join(
+    points,
+    municipalities[, c(
+      "code_muni",
+      "name_muni",
+      "abbrev_state",
+      "name_region"
+    )],
+    left = TRUE,
+    join = sf::st_intersects
+  )
+  if (nrow(joined) != nrow(stations)) {
+    cli::cli_abort("Ambiguous municipality spatial join.")
+  }
+  stations[, code_muni := as.integer(joined$code_muni)]
+  stations[, name_muni := joined$name_muni]
+  stations[, abbrev_state := joined$abbrev_state]
+  stations[, name_region := joined$name_region]
+  stations[, muni_match := "polygon"]
+
+  missing <- which(is.na(stations$code_muni))
+  if (length(missing)) {
+    nearest <- sf::st_nearest_feature(points[missing, ], municipalities)
+    distance_km <- as.numeric(sf::st_distance(
+      points[missing, ],
+      municipalities[nearest, ],
+      by_element = TRUE
+    )) /
+      1000
+    exceptions <- match(
+      stations$code_station[missing],
+      municipality_exceptions$code_station
+    )
+    manual_exception <- exceptions[
+      !is.na(exceptions) &
+        !is.na(municipality_exceptions$code_muni[exceptions])
+    ]
+    if (length(manual_exception)) {
+      manual <- missing[match(manual_exception, exceptions)]
+      match_muni <- match(
+        municipality_exceptions$code_muni[manual_exception],
+        municipalities$code_muni
+      )
+      if (anyNA(match_muni)) {
+        cli::cli_abort(
+          "Municipality exception references an unknown code_muni."
+        )
+      }
+      stations[
+        manual,
+        code_muni := as.integer(municipalities$code_muni[match_muni])
+      ]
+      stations[manual, name_muni := municipalities$name_muni[match_muni]]
+      stations[manual, abbrev_state := municipalities$abbrev_state[match_muni]]
+      stations[manual, name_region := municipalities$name_region[match_muni]]
+      stations[manual, muni_match := "manual"]
+    }
+    stations[
+      missing[
+        !is.na(exceptions) &
+          is.na(municipality_exceptions$code_muni[exceptions])
+      ],
+      muni_match := "none"
+    ]
+    report <- data.table::data.table(
+      code_station = stations$code_station[missing],
+      name_station = stations$name_station[missing],
+      nearest_code_muni = as.integer(municipalities$code_muni[nearest]),
+      nearest_name_muni = municipalities$name_muni[nearest],
+      distance_km = distance_km,
+      muni_match = ifelse(
+        is.na(exceptions),
+        NA_character_,
+        stations$muni_match[missing]
+      ),
+      assigned_code_muni = stations$code_muni[missing],
+      assigned_name_muni = stations$name_muni[missing]
+    )
+    data.table::fwrite(
+      report,
+      file.path(report_dir, "nearest-municipalities.csv")
+    )
+    unknown <- which(is.na(exceptions))
+    if (length(unknown)) {
+      i <- unknown[[1]]
+      station <- stations[missing[[i]]]
+      cli::cli_abort(
+        "Station {station$code_station} ({station$name_station}) at ({station$lat}, {station$lon}) is outside every municipality polygon; nearest is {report$nearest_name_muni[[i]]} ({report$nearest_code_muni[[i]]}), {round(distance_km[[i]], 3)} km away. Review and add the station to the exception table."
+      )
+    }
+  } else {
+    data.table::fwrite(
+      data.table::data.table(
+        code_station = character(),
+        name_station = character(),
+        nearest_code_muni = integer(),
+        nearest_name_muni = character(),
+        distance_km = numeric(),
+        muni_match = character(),
+        assigned_code_muni = integer(),
+        assigned_name_muni = character()
+      ),
+      file.path(report_dir, "nearest-municipalities.csv")
     )
   }
-  return(invisible(NULL))
+  return(stations)
 }
 
 build_stations <- function(files, report_dir) {
@@ -160,71 +280,18 @@ build_stations <- function(files, report_dir) {
     simplified = TRUE,
     showProgress = FALSE
   )
-  points <- sf::st_as_sf(
+  stations <- assign_station_municipalities(
     stations,
-    coords = c("lon", "lat"),
-    crs = 4674,
-    remove = FALSE
+    municipalities,
+    report_dir
   )
-  joined <- sf::st_join(
-    points,
-    municipalities[, c(
-      "code_muni",
-      "name_muni",
-      "abbrev_state",
-      "name_region"
-    )],
-    left = TRUE,
-    join = sf::st_intersects
-  )
-  if (nrow(joined) != nrow(stations)) {
-    cli::cli_abort("Ambiguous municipality spatial join.")
-  }
-  missing <- which(is.na(joined$code_muni))
-  nearest_match <- integer()
-  distance_km <- numeric()
-  if (length(missing)) {
-    nearest <- sf::st_nearest_feature(points[missing, ], municipalities)
-    distance_km <- as.numeric(sf::st_distance(
-      points[missing, ],
-      municipalities[nearest, ],
-      by_element = TRUE
-    )) /
-      1000
-    nearest_match <- missing[distance_km <= 650]
-    nearest <- nearest[distance_km <= 650]
-    joined$code_muni[nearest_match] <- municipalities$code_muni[nearest]
-    joined$name_muni[nearest_match] <- municipalities$name_muni[nearest]
-    joined$abbrev_state.y[nearest_match] <- municipalities$abbrev_state[nearest]
-    joined$name_region.y[nearest_match] <- municipalities$name_region[nearest]
-  }
-  unmatched <- which(is.na(joined$code_muni))
-  check_unmatched_stations(stations$code_station[unmatched])
-  data.table::fwrite(
-    data.table::data.table(
-      code_station = stations$code_station[missing],
-      name_station = stations$name_station[missing],
-      distance_km = distance_km,
-      muni_match = ifelse(missing %in% nearest_match, "nearest", "none"),
-      assigned_code_muni = joined$code_muni[missing],
-      assigned_name_muni = joined$name_muni[missing]
-    ),
-    file.path(report_dir, "nearest-municipalities.csv")
-  )
-  stations[, code_muni := as.character(joined$code_muni)]
-  stations[, name_muni := joined$name_muni]
-  stations[, abbrev_state := joined$abbrev_state.y]
-  stations[, name_region := joined$name_region.y]
-  stations[, muni_match := "polygon"]
-  stations[nearest_match, muni_match := "nearest"]
-  stations[unmatched, muni_match := "none"]
   stations[,
     tz_offset_hours := station_offset(
       abbrev_state,
       lon,
       lat,
       name_muni,
-      seq_len(.N) %in% nearest_match
+      muni_match == "manual"
     )
   ]
   stations[code_station == "C891", tz_offset_hours := -3L]
