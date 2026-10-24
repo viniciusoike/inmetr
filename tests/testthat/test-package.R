@@ -291,7 +291,7 @@ test_that("cache clear keeps files unless the answer is yes", {
   inmet_stations()
   path <- file.path(inmet_cache_dir(), "2026-10-24")
   testthat::local_mocked_bindings(
-    .read_cache_confirmation = function() "no"
+    .read_cache_confirmation = function() return("no")
   )
   expect_false(inmet_cache_clear(ask = TRUE))
   expect_true(dir.exists(path))
@@ -303,7 +303,7 @@ test_that("cache clear deletes files after a yes answer", {
   inmet_stations()
   path <- file.path(inmet_cache_dir(), "2026-10-24")
   testthat::local_mocked_bindings(
-    .read_cache_confirmation = function() "yes"
+    .read_cache_confirmation = function() return("yes")
   )
   expect_true(inmet_cache_clear(ask = TRUE))
   expect_false(dir.exists(path))
