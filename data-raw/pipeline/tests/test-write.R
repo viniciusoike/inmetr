@@ -112,7 +112,7 @@ testthat::test_that("writer preserves local-year partitions and output contract"
     testthat::expect_equal(
       manifest$tables[[table]]$schema[[which(vapply(
         manifest$tables[[table]]$schema,
-        function(column) column$name == "code_muni",
+        function(column) return(column$name == "code_muni"),
         logical(1)
       ))]]$type,
       "INTEGER"

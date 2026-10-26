@@ -1,26 +1,32 @@
 Package: inmetr
-Type: Package
-Title: What the Package Does (Title Case)
+Title: Access Brazilian Automatic Weather Station Data
 Version: 0.1.0
-Authors@R: c(
-    person(
-      "Jane", "Doe",
-      email = "jane@example.com",
-      role = c("aut", "cre")
-    )
-  )
-Description: More about what it does (maybe more than one line).
-    Continuation lines should be indented.
+Depends: R (>= 4.2.0)
+Authors@R: person("Vinicius", "Reginatto", email = "viniciusoike@gmail.com", role = c("aut", "cre"))
+Description: Download verified INMET automatic weather station data, query
+    hourly and daily observations lazily with DuckDB, and find stations near
+    Brazilian municipality seats.
 License: MIT + file LICENSE
+URL: https://github.com/viniciusoike/inmetr
+BugReports: https://github.com/viniciusoike/inmetr/issues
 Encoding: UTF-8
-LazyData: true
-Depends: 
-    R (>= 3.5)
-RoxygenNote: 7.3.2
-Imports: 
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Config/testthat/edition: 3
+Imports:
     cli,
-    data.table,
+    DBI,
+    dbplyr,
+    digest,
+    dplyr,
+    duckdb (>= 1.5.5),
+    jsonlite,
+    rlang,
+    stringi,
+    tibble
+Suggests:
+    testthat (>= 3.0.0),
+    withr,
+    geobr,
     here,
-    lubridate,
-    rvest,
-    stringr
+    sf
