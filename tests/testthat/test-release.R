@@ -1,4 +1,5 @@
 test_that("published release downloads and queries end to end", {
+  # Local R CMD check also needs NOT_CRAN=true; CI sets it.
   skip_on_cran()
   skip_if_not(
     identical(Sys.getenv("INMETR_LIVE_TESTS"), "true"),

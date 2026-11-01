@@ -25,6 +25,7 @@ Imports:
     stringi,
     tibble
 Suggests:
+    curl,
     testthat (>= 3.0.0),
     withr,
     geobr,
