@@ -1,0 +1,54 @@
+inmetr provides verified INMET automatic weather station data for lazy R
+queries and nearby-station lookup.
+
+Install from GitHub:
+
+``` r
+
+remotes::install_github("viniciusoike/inmetr")
+```
+
+Find a station near São Paulo and collect its daily observations for
+2024:
+
+``` r
+
+library(inmetr)
+
+stations <- inmet_nearest(3550308, n = 1)
+daily <- read_inmet("daily", years = 2024)
+city_daily <- daily |>
+  dplyr::filter(.data$code_station %in% stations$code_station) |>
+  dplyr::collect()
+```
+
+The data release is downloaded on first use into the user cache.
+Downloaded files are checked against their SHA-256 hashes. Later reads
+check file size; use
+[`inmet_cache_clear()`](https://viniciusoike.github.io/inmetr/reference/inmet_cache_clear.md)
+to recover from suspected cache corruption.
+
+# Package index
+
+## Read data
+
+- [`read_inmet()`](https://viniciusoike.github.io/inmetr/reference/read_inmet.md)
+  : Read INMET observations lazily
+- [`inmet_stations()`](https://viniciusoike.github.io/inmetr/reference/inmet_stations.md)
+  : Read INMET station metadata
+- [`inmet_nearest()`](https://viniciusoike.github.io/inmetr/reference/inmet_nearest.md)
+  : Find stations nearest a municipality seat
+
+## Cache
+
+- [`inmet_cache_dir()`](https://viniciusoike.github.io/inmetr/reference/inmet_cache_dir.md)
+  : Locate the inmetr cache
+- [`inmet_cache_clear()`](https://viniciusoike.github.io/inmetr/reference/inmet_cache_clear.md)
+  : Clear the inmetr data cache
+
+# Articles
+
+### All vignettes
+
+- [Get started with
+  inmetr](https://viniciusoike.github.io/inmetr/articles/inmetr.md):
