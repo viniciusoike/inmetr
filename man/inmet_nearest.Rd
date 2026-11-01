@@ -4,25 +4,36 @@
 \alias{inmet_nearest}
 \title{Find stations nearest a municipality seat}
 \usage{
-inmet_nearest(muni, n = 1, max_km = NULL, state = NULL)
+inmet_nearest(muni, n = 1, max_km = NULL, state = NULL, status = NULL)
 }
 \arguments{
-\item{muni}{A seven-digit IBGE municipality code or municipality name.}
+\item{muni}{One or more seven-digit IBGE municipality codes or
+municipality names.}
 
-\item{n}{Maximum number of stations to return.}
+\item{n}{Maximum number of stations to return per municipality.}
 
 \item{max_km}{Optional maximum distance in kilometres.}
 
-\item{state}{Optional two-letter state abbreviation for name matching.}
+\item{state}{Optional two-letter state abbreviation for name matching.
+Either one value for every \code{muni} or one value per \code{muni}; use \code{NA} to
+skip an element.}
+
+\item{status}{Optional station statuses to keep: any of \code{"operating"},
+\code{"broken"} and \code{"closed"}. See \code{\link[=inmet_stations]{inmet_stations()}} for their meaning.
+\code{NULL} keeps every station.}
 }
 \value{
-A tibble of station metadata with \code{distance_km}.
+A tibble with the station metadata from \code{\link[=inmet_stations]{inmet_stations()}},
+\code{distance_km}, and a first column \code{code_muni_query} with the IBGE code
+each row answers. Rows follow the order of \code{muni}, then distance.
 }
 \description{
-Find stations nearest a municipality seat
+Ranks stations by great-circle (haversine) distance from each
+municipality's seat.
 }
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 inmet_nearest("Campinas", n = 3)
+inmet_nearest(c(3550308, 3304557), status = "operating")
 \dontshow{\}) # examplesIf}
 }
