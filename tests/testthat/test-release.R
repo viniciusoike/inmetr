@@ -1,5 +1,9 @@
 test_that("published release downloads and queries end to end", {
   skip_on_cran()
+  skip_if_not(
+    identical(Sys.getenv("INMETR_LIVE_TESTS"), "true"),
+    "Set INMETR_LIVE_TESTS=true to run live release tests."
+  )
   skip_if_offline("github.com")
   withr::local_options(
     inmetr.base_url = NULL,
