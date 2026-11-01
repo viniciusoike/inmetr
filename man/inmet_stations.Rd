@@ -12,6 +12,22 @@ A tibble of station metadata.
 \description{
 Read INMET station metadata
 }
+\section{Station status}{
+
+\code{status} records each station's state in the INMET station catalog used
+to build the release:
+\itemize{
+\item \code{"operating"}: listed as operating (\emph{Operante}).
+\item \code{"broken"}: listed as faulty (\emph{Pane}). The station may have stopped
+reporting recently or may still report with gaps, but its earlier
+observations are kept. Check \code{last_obs} and the coverage of the
+variables you need before dropping it.
+\item \code{"closed"}: absent from the catalog, though the historical files hold
+observations for it. \code{last_obs} gives its last observation in the
+release.
+}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 inmet_stations()

@@ -269,6 +269,50 @@ test_that("ambiguous names need a state", {
   expect_error(inmet_nearest("Not A City"), "Unknown")
 })
 
+test_that("nearest accepts several municipalities", {
+  local_fixture()
+  result <- inmet_nearest(c("Campinas", "3550308", "Campinas"), n = 2)
+  expect_equal(
+    result$code_muni_query,
+    c(3509502L, 3509502L, 3550308L, 3550308L, 3509502L, 3509502L)
+  )
+  expect_equal(result$code_station[1:4], c("A701", "A702", "A702", "A703"))
+  expect_identical(names(result)[[1]], "code_muni_query")
+  expect_equal(
+    inmet_nearest(
+      c("Bom Jesus", "Campinas"),
+      state = c("RS", "SP")
+    )$code_muni_query[[2]],
+    3509502L
+  )
+  expect_error(inmet_nearest(c("Campinas", "Not A City")), "Not A City")
+  expect_error(inmet_nearest(character()), "muni")
+  expect_error(inmet_nearest(c("Campinas", NA)), "muni")
+  expect_error(inmet_nearest("Campinas", state = c("SP", "RJ")), "state")
+  expect_equal(inmet_nearest("Campinas", state = NA)$code_muni_query, 3509502L)
+  expect_equal(
+    inmet_nearest(c("Campinas", "Santos"), state = c(NA, NA))$code_muni_query,
+    c(3509502L, 3548500L)
+  )
+})
+
+test_that("nearest filters by station status", {
+  local_fixture()
+  expect_equal(
+    inmet_nearest("São Paulo", status = "operating")$code_station,
+    "A701"
+  )
+  expect_equal(
+    inmet_nearest(
+      "São Paulo",
+      n = 3,
+      status = c("broken", "closed")
+    )$code_station,
+    c("A702", "A703")
+  )
+  expect_error(inmet_nearest("Campinas", status = "active"), "status")
+})
+
 test_that("cache option and clear use the selected cache", {
   local_fixture()
   expect_equal(inmet_cache_dir(), getOption("inmetr.cache_dir"))
