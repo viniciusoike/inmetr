@@ -35,6 +35,12 @@ jobs:
           extra-packages: any::pkgdown, local::.
           needs: website
 
+      - name: Cache inmetr release data
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R/inmetr
+          key: inmetr-data-${{ hashFiles('R/cache.R') }}
+
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
         shell: Rscript {0}

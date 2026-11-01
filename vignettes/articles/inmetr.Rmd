@@ -49,11 +49,10 @@ inmet_stations() |>
 daily <- read_inmet("daily", years = 2020:2024)
 
 monthly <- daily |>
-  filter(code_station == "A801", n_hours >= 18) |>
+  filter(code_station == "A801", !is.na(temp_mean_c), n_hours >= 18) |>
   group_by(year, month) |>
   summarise(
-    temp_mean_c = mean(temp_mean_c, na.rm = TRUE),
-    precip_total_mm = sum(precip_total_mm, na.rm = TRUE),
+    temp_mean_c = mean(temp_mean_c),
     n_days = n(),
     .groups = "drop"
   ) |>
@@ -63,10 +62,10 @@ monthly <- daily |>
 monthly
 ```
 
-The `n_hours` column counts the hours with at least one valid reading. inmetr publishes INMET's values without outlier filtering or coverage thresholds, so choose a coverage rule that suits your analysis. The filter above keeps days with at least 18 valid hours.
+inmetr publishes INMET's values without outlier filtering or coverage thresholds, so choose a coverage rule that suits your analysis. The query above keeps days with a mean temperature and at least 18 hours of data, and `n_days` reports how many days each month retains. `n_hours` counts hours with at least one valid measurement of any variable, so it doesn't guarantee 18 hours of temperature readings. For variable-specific coverage, count non-missing values in the hourly table.
 
 The daily table aggregates the hourly one by local standard date. For sub-daily questions, use `read_inmet("hourly", years = ...)` the same way. Timestamps there are in UTC, and `date_local` and `hour_local` give the station's local standard time.
 
 ## Cache
 
-Files go to `inmet_cache_dir()` on first use. inmetr checks each download against the SHA-256 hash in the release manifest and reuses cached files after that. `inmet_cache_clear()` deletes the cached release.
+Files go to `inmet_cache_dir()` on first use. inmetr checks each downloaded Parquet file against the SHA-256 hash listed in the release manifest and reuses cached files after that. `inmet_cache_clear()` deletes the cached release.
