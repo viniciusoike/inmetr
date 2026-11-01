@@ -96,6 +96,21 @@ alone.
 }
 }
 
+\section{Known data problems}{
+
+The release keeps INMET's values, including some implausible temperatures
+that \code{n_hours} filters do not catch.\tabular{lll}{
+   Station \tab Years \tab Problem \cr
+   A201 Belém/PA \tab 2005–2006 \tab The 99th percentile of hourly \code{temp_max_c} minus \code{temp_dry_bulb_c} is 5.8 °C, against 3.9 °C across all stations, and daily maxima reach 44–45 °C \cr
+   A303 Maceió/AL \tab 2004–2005 \tab 60 and 92 days with \code{temp_max_c} of 35 °C or more, against at most 5 in any later year \cr
+   A409 Aracaju/SE \tab 2021 \tab Hourly \code{temp_max_c} missing on 130 days; daily maxima reach 35 °C or more on 73 days, 70 of them from the dry-bulb fallback, against at most 3 in other years \cr
+}
+
+
+No temperature in the release exceeds 45.0 °C, and values do not bunch
+at 45.0 °C. Treat readings near 45 °C with suspicion.
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 daily <- read_inmet("daily", 2024)
