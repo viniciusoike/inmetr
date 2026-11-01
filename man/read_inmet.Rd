@@ -15,11 +15,100 @@ read_inmet(table = c("daily", "hourly"), years = NULL)
 A lazy dbplyr table backed by DuckDB.
 }
 \description{
-Read INMET observations lazily
+Downloads the selected yearly Parquet files to the cache once and returns
+a lazy table. Filter and summarise it with dplyr, then call
+\code{\link[dplyr:compute]{dplyr::collect()}} to bring the result into R.
 }
+\details{
+Values are INMET's as published, except that \code{-9999} and blanks become
+\code{NA}. The release applies no outlier filter or coverage threshold. Its
+last year is usually partial: the \code{2026-10-24} release ends on
+28 February 2025.
+}
+\section{Hourly table}{
+
+One row per station and hour in INMET's files, including hours where every
+measurement is missing.\tabular{ll}{
+   Column \tab Meaning \cr
+   \code{code_station} \tab INMET station code \cr
+   \code{timestamp_utc} \tab Observation time, UTC \cr
+   \code{date_local}, \code{month}, \code{day}, \code{hour_local} \tab Local date and its parts, at the station's fixed standard UTC offset (no daylight saving) \cr
+   \code{year} \tab UTC year; \code{years} selects on it \cr
+   \code{precip_mm} \tab Precipitation in the hour, mm \cr
+   \code{pressure_station_hpa} \tab Station pressure, hPa \cr
+   \code{pressure_max_hpa}, \code{pressure_min_hpa} \tab Pressure extremes in the previous hour, hPa \cr
+   \code{radiation_kj_m2} \tab Global radiation, kJ/m² \cr
+   \code{temp_dry_bulb_c} \tab Dry-bulb air temperature, °C \cr
+   \code{temp_dew_point_c} \tab Dew-point temperature, °C \cr
+   \code{temp_max_c}, \code{temp_min_c} \tab Air-temperature extremes in the previous hour, °C \cr
+   \code{temp_dew_point_max_c}, \code{temp_dew_point_min_c} \tab Dew-point extremes in the previous hour, °C \cr
+   \code{rel_humidity_pct} \tab Relative humidity, \% \cr
+   \code{rel_humidity_max_pct}, \code{rel_humidity_min_pct} \tab Relative-humidity extremes in the previous hour, \% \cr
+   \code{wind_direction_deg} \tab Wind direction, degrees \cr
+   \code{wind_speed_ms} \tab Wind speed, m/s \cr
+   \code{wind_gust_ms} \tab Maximum gust in the previous hour, m/s \cr
+   \code{code_muni}, \code{name_muni}, \code{abbrev_state} \tab Station's IBGE municipality code, name, and state \cr
+}
+}
+
+\section{Daily table}{
+
+The pipeline aggregates hourly rows by station and \code{date_local}. Every
+available hour contributes, and an aggregate is \code{NA} only when all of its
+hourly inputs are missing, so a daily sum is never zero for lack of data.\tabular{ll}{
+   Column \tab Meaning \cr
+   \code{code_station} \tab INMET station code \cr
+   \code{date} \tab Local date \cr
+   \code{year}, \code{month}, \code{day} \tab Parts of the local date; \code{years} selects on \code{year} \cr
+   \code{day_of_year} \tab Day of the year, 1–366 \cr
+   \code{week}, \code{weekday} \tab ISO week (1–53) and ISO weekday (Monday = 1) \cr
+   \code{n_hours} \tab Hours with at least one non-missing measurement, 0–24 \cr
+   \code{temp_mean_c} \tab Mean dry-bulb temperature, °C \cr
+   \code{temp_min_c}, \code{temp_max_c} \tab Lowest and highest hourly air-temperature extreme, °C; see below \cr
+   \code{temp_dew_point_mean_c} \tab Mean dew-point temperature, °C \cr
+   \code{rel_humidity_mean_pct} \tab Mean relative humidity, \% \cr
+   \code{rel_humidity_min_pct}, \code{rel_humidity_max_pct} \tab Lowest and highest hourly relative-humidity extreme, \%; see below \cr
+   \code{precip_total_mm} \tab Total precipitation, mm \cr
+   \code{radiation_total_kj_m2} \tab Total global radiation, kJ/m² \cr
+   \code{pressure_station_mean_hpa} \tab Mean station pressure, hPa \cr
+   \code{wind_speed_mean_ms} \tab Mean wind speed, m/s \cr
+   \code{wind_gust_max_ms} \tab Highest gust, m/s \cr
+   \code{code_muni}, \code{name_muni}, \code{abbrev_state} \tab Station's IBGE municipality code, name, and state \cr
+}
+
+
+Three features of the daily table need care.
+\itemize{
+\item \strong{Empty days.} INMET's files list hours with no measurements, so the
+daily table has rows with \code{n_hours == 0} and every measurement \code{NA}.
+Counting rows per station-year therefore counts calendar days, not days
+with data. Filter on \code{n_hours} first.
+\item \strong{\code{n_hours} counts hours with any measurement.} A day can have
+\code{n_hours == 24} while one variable is missing all day. Coverage rules for
+a single variable need the hourly table; the example below counts hours
+with \code{temp_max_c}.
+\item \strong{Extremes fall back to the hourly reading.} For each hour,
+\code{temp_max_c} uses the hourly maximum when present and \code{temp_dry_bulb_c}
+otherwise. \code{temp_min_c}, \code{rel_humidity_max_pct} and
+\code{rel_humidity_min_pct} work the same way. When the extreme field is
+missing for long spells, the daily extremes come from the hourly reading
+alone.
+}
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 daily <- read_inmet("daily", 2024)
 dplyr::collect(dplyr::filter(daily, .data$code_muni == 3550308L))
+
+# Hours per day with a measured temp_max_c, to drop days that rely on the
+# dry-bulb fallback
+read_inmet("hourly", 2021) |>
+  dplyr::filter(.data$code_station == "A409") |>
+  dplyr::summarise(
+    n_hours_temp_max = sum(as.integer(!is.na(.data$temp_max_c))),
+    .by = c("code_station", "date_local")
+  ) |>
+  dplyr::collect()
 \dontshow{\}) # examplesIf}
 }
