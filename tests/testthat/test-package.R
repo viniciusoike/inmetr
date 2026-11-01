@@ -289,6 +289,11 @@ test_that("nearest accepts several municipalities", {
   expect_error(inmet_nearest(character()), "muni")
   expect_error(inmet_nearest(c("Campinas", NA)), "muni")
   expect_error(inmet_nearest("Campinas", state = c("SP", "RJ")), "state")
+  expect_equal(inmet_nearest("Campinas", state = NA)$code_muni_query, 3509502L)
+  expect_equal(
+    inmet_nearest(c("Campinas", "Santos"), state = c(NA, NA))$code_muni_query,
+    c(3509502L, 3548500L)
+  )
 })
 
 test_that("nearest filters by station status", {

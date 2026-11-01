@@ -22,8 +22,9 @@ to build the release:
 reporting recently or may still report with gaps, but its earlier
 observations are kept. Check \code{last_obs} and the coverage of the
 variables you need before dropping it.
-\item \code{"closed"}: absent from the catalog. The station has observations in the
-historical files but no longer reports; \code{last_obs} shows when it stopped.
+\item \code{"closed"}: absent from the catalog, though the historical files hold
+observations for it. \code{last_obs} gives its last observation in the
+release.
 }
 }
 

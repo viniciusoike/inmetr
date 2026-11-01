@@ -106,8 +106,9 @@ read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
 #'   reporting recently or may still report with gaps, but its earlier
 #'   observations are kept. Check `last_obs` and the coverage of the
 #'   variables you need before dropping it.
-#' * `"closed"`: absent from the catalog. The station has observations in the
-#'   historical files but no longer reports; `last_obs` shows when it stopped.
+#' * `"closed"`: absent from the catalog, though the historical files hold
+#'   observations for it. `last_obs` gives its last observation in the
+#'   release.
 #'
 #' @return A tibble of station metadata.
 #' @export

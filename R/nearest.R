@@ -120,7 +120,10 @@ inmet_nearest <- function(
     )
   }
   if (is.null(state)) {
-    state <- NA_character_
+    state <- NA
+  }
+  if (is.logical(state) && all(is.na(state))) {
+    state <- as.character(state)
   }
   if (
     !is.character(state) ||
