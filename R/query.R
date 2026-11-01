@@ -142,7 +142,7 @@
 #' read_inmet("hourly", 2021) |>
 #'   dplyr::filter(.data$code_station == "A409") |>
 #'   dplyr::summarise(
-#'     n_hours_temp_max = sum(as.integer(!is.na(.data$temp_max_c))),
+#'     n_hours_temp_max = sum(as.integer(!is.na(.data$temp_max_c)), na.rm = TRUE),
 #'     .by = c("code_station", "date_local")
 #'   ) |>
 #'   dplyr::collect()
