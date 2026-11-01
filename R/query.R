@@ -137,11 +137,10 @@
 #' | --- | --- | --- |
 #' | A201 Belém/PA | 2005–2006 | The 99th percentile of hourly `temp_max_c` minus `temp_dry_bulb_c` is 5.8 °C, against 3.9 °C across all stations, and daily maxima reach 44–45 °C |
 #' | A303 Maceió/AL | 2004–2005 | 60 and 92 days with `temp_max_c` of 35 °C or more, against at most 5 in any later year |
-#' | A409 Aracaju/SE | 2021 | Hourly `temp_max_c` missing on 130 days; the dry-bulb fallback gives 73 days of 35 °C or more, against at most 3 in other years |
+#' | A409 Aracaju/SE | 2021 | Hourly `temp_max_c` missing on 130 days; daily maxima reach 35 °C or more on 73 days, 70 of them from the dry-bulb fallback, against at most 3 in other years |
 #'
 #' No temperature in the release exceeds 45.0 °C, and values do not bunch
-#' at 45.0 °C, so INMET appears to discard higher readings rather than cap
-#' them. Treat readings near 45 °C with suspicion.
+#' at 45.0 °C. Treat readings near 45 °C with suspicion.
 #'
 #' @param table Either `"daily"` or `"hourly"`.
 #' @param years Years to download; `NULL` selects all available years.
