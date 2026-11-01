@@ -1,3 +1,5 @@
+[![R-CMD-check](https://github.com/viniciusoike/inmetr/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/viniciusoike/inmetr/actions/workflows/R-CMD-check.yaml)
+
 inmetr provides verified INMET automatic weather station data for lazy R queries and nearby-station lookup.
 
 Install from GitHub:
