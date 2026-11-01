@@ -1,0 +1,14 @@
+url: https://viniciusoike.github.io/inmetr/
+template:
+  bootstrap: 5
+
+reference:
+  - title: Read data
+    contents:
+      - read_inmet
+      - inmet_stations
+      - inmet_nearest
+  - title: Cache
+    contents:
+      - inmet_cache_dir
+      - inmet_cache_clear
