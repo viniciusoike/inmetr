@@ -1,0 +1,72 @@
+---
+title: "Get started with inmetr"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+inmetr reads hourly and daily observations from INMET's automatic weather stations. The data run from 2000 to February 2025. Each table is split into one Parquet file per year. inmetr downloads only the years you ask for and queries them with DuckDB, so you filter and summarise with dplyr before anything enters memory.
+
+```{r setup, message = FALSE}
+library(inmetr)
+library(dplyr)
+```
+
+## Find a station
+
+Most municipalities have no station of their own. `inmet_nearest()` ranks stations by their distance to a municipality seat. It accepts an IBGE code or a name, and accents and case don't matter.
+
+```{r}
+poa <- inmet_nearest("Porto Alegre", n = 3)
+poa |>
+  select(code_station, name_station, status, name_muni, distance_km)
+```
+
+A name shared by several municipalities is an error. Pass `state` to choose one:
+
+```{r, error = TRUE}
+inmet_nearest("Bom Jesus")
+```
+
+```{r}
+inmet_nearest("Bom Jesus", state = "RS") |>
+  select(code_station, name_station, distance_km)
+```
+
+`inmet_stations()` returns the full station table. Closed stations stay in it with `status = "closed"`, and `first_obs` and `last_obs` show what period each station covers.
+
+```{r}
+inmet_stations() |>
+  count(status)
+```
+
+## Query daily data
+
+`read_inmet()` returns a lazy table. The `years` argument controls which files are downloaded, and dplyr verbs build a SQL query that DuckDB runs when you call `collect()`.
+
+```{r}
+daily <- read_inmet("daily", years = 2020:2024)
+
+monthly <- daily |>
+  filter(code_station == "A801", n_hours >= 18) |>
+  group_by(year, month) |>
+  summarise(
+    temp_mean_c = mean(temp_mean_c, na.rm = TRUE),
+    precip_total_mm = sum(precip_total_mm, na.rm = TRUE),
+    n_days = n(),
+    .groups = "drop"
+  ) |>
+  arrange(year, month) |>
+  collect()
+
+monthly
+```
+
+The `n_hours` column counts the hours with at least one valid reading. inmetr publishes INMET's values without outlier filtering or coverage thresholds, so choose a coverage rule that suits your analysis. The filter above keeps days with at least 18 valid hours.
+
+The daily table aggregates the hourly one by local standard date. For sub-daily questions, use `read_inmet("hourly", years = ...)` the same way. Timestamps there are in UTC, and `date_local` and `hour_local` give the station's local standard time.
+
+## Cache
+
+Files go to `inmet_cache_dir()` on first use. inmetr checks each download against the SHA-256 hash in the release manifest and reuses cached files after that. `inmet_cache_clear()` deletes the cached release.
