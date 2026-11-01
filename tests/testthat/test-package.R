@@ -324,3 +324,20 @@ test_that("cache clear rejects invalid ask values before deleting files", {
     expect_true(dir.exists(path))
   }
 })
+
+test_that("municipal seats sit near the town for known bad 2022 seats", {
+  seats <- inmetr:::municipal_seats
+  town <- data.frame(
+    code_muni = c(1100205L, 1302702L, 1101401L),
+    lat = c(-8.762, -5.809, -10.246),
+    lon = c(-63.904, -61.300, -63.290)
+  )
+  seats <- merge(town, seats, by = "code_muni", suffixes = c("_town", ""))
+  gap_km <- 111 *
+    sqrt(
+      (seats$lat - seats$lat_town)^2 +
+        ((seats$lon - seats$lon_town) * cos(seats$lat * pi / 180))^2
+    )
+  expect_equal(nrow(seats), 3L)
+  expect_true(all(gap_km < 10))
+})
