@@ -21,6 +21,10 @@ municipal_seats <- read_seats(2022)
 # 2010 seat and the kelvins/municipios-brasileiros coordinates, while the 2010
 # seat is less than half as far from the latter. Use the 2010 seat for them
 # (issue #4; Porto Velho's 2022 seat is 99 km south of the city).
+# Selected on 2026-11-01 with geobr 2010 and 2022 seats and kelvins commit
+# 503e2f70bbf1b4b7ec0b1f68b09086ccc38fe861 (csv/municipios.csv). Rule: 2010 and
+# 2022 seats more than 5 km apart, 2022 seat more than 5 km from kelvins, and
+# the 2010 seat less than half as far from kelvins as the 2022 seat.
 use_2010 <- c(
   1100072L, # Corumbiara/RO
   1100130L, # Machadinho d'Oeste/RO
