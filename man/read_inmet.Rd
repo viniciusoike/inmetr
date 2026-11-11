@@ -63,6 +63,16 @@ hourly inputs are missing, so a daily sum is never zero for lack of data.\tabula
    \code{day_of_year} \tab Day of the year, 1–366 \cr
    \code{week}, \code{weekday} \tab ISO week (1–53) and ISO weekday (Monday = 1) \cr
    \code{n_hours} \tab Hours with at least one non-missing measurement, 0–24 \cr
+   \code{n_hours_temp_mean} \tab Hours contributing to the daily mean temperature, 0–24 \cr
+   \code{n_hours_temp_min}, \code{n_hours_temp_max} \tab Hours contributing to the daily temperature extremes, including the dry-bulb fallback, 0–24 \cr
+   \code{n_hours_temp_dew_point_mean} \tab Hours contributing to the daily mean dew point, 0–24 \cr
+   \code{n_hours_rel_humidity_mean} \tab Hours contributing to the daily mean relative humidity, 0–24 \cr
+   \code{n_hours_rel_humidity_min}, \code{n_hours_rel_humidity_max} \tab Hours contributing to the daily humidity extremes, including the hourly fallback, 0–24 \cr
+   \code{n_hours_precip_total} \tab Hours contributing to the daily precipitation total, 0–24 \cr
+   \code{n_hours_radiation_total} \tab Hours contributing to the daily radiation total, 0–24 \cr
+   \code{n_hours_pressure_station_mean} \tab Hours contributing to the daily mean station pressure, 0–24 \cr
+   \code{n_hours_wind_speed_mean} \tab Hours contributing to the daily mean wind speed, 0–24 \cr
+   \code{n_hours_wind_gust_max} \tab Hours contributing to the daily maximum gust, 0–24 \cr
    \code{temp_mean_c} \tab Mean dry-bulb temperature, °C \cr
    \code{temp_min_c}, \code{temp_max_c} \tab Lowest and highest hourly air-temperature extreme, °C; see below \cr
    \code{temp_dew_point_mean_c} \tab Mean dew-point temperature, °C \cr
@@ -84,9 +94,13 @@ daily table has rows with \code{n_hours == 0} and every measurement \code{NA}.
 Counting rows per station-year therefore counts calendar days, not days
 with data. Filter on \code{n_hours} first.
 \item \strong{\code{n_hours} counts hours with any measurement.} A day can have
-\code{n_hours == 24} while one variable is missing all day. Coverage rules for
-a single variable need the hourly table; the example below counts hours
-with \code{temp_max_c}.
+\code{n_hours == 24} while one variable is missing all day. Each \verb{n_hours_*}
+column counts the non-missing hourly inputs of its own aggregate, so use
+it to filter coverage for that variable. The counts include both the
+previous-hour extreme and its hourly fallback for \code{temp_min_c},
+\code{temp_max_c}, \code{rel_humidity_min_pct}, and \code{rel_humidity_max_pct}.
+Schema 3 adds these columns; the pinned \code{2026-10-24} release predates
+them, and on that release the hourly table gives the same counts.
 \item \strong{Extremes fall back to the hourly reading.} For each hour,
 \code{temp_max_c} uses the hourly maximum when present and \code{temp_dry_bulb_c}
 otherwise. \code{temp_min_c}, \code{rel_humidity_max_pct} and
@@ -124,6 +138,11 @@ read_inmet("hourly", 2021) |>
     n_hours_temp_max = sum(as.integer(!is.na(.data$temp_max_c)), na.rm = TRUE),
     .by = c("code_station", "date_local")
   ) |>
+  dplyr::collect()
+
+# Schema 3 daily releases expose that coverage directly.
+read_inmet("daily", 2024) |>
+  dplyr::filter(.data$n_hours_temp_max >= 18) |>
   dplyr::collect()
 \dontshow{\}) # examplesIf}
 }

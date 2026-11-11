@@ -26,7 +26,8 @@ get_build_commit <- function(repo_root = here::here(), allow_dirty = FALSE) {
       "--untracked-files=all",
       "--",
       "data-raw/pipeline",
-      "data-raw/build.R"
+      "data-raw/build.R",
+      "data-raw/acquire.R"
     ))
     if (length(dirty)) {
       cli::cli_abort(
@@ -61,6 +62,18 @@ expected_schemas <- list(
     week = "INTEGER",
     weekday = "INTEGER",
     n_hours = "INTEGER",
+    n_hours_temp_mean = "INTEGER",
+    n_hours_temp_min = "INTEGER",
+    n_hours_temp_max = "INTEGER",
+    n_hours_temp_dew_point_mean = "INTEGER",
+    n_hours_rel_humidity_mean = "INTEGER",
+    n_hours_rel_humidity_min = "INTEGER",
+    n_hours_rel_humidity_max = "INTEGER",
+    n_hours_precip_total = "INTEGER",
+    n_hours_radiation_total = "INTEGER",
+    n_hours_pressure_station_mean = "INTEGER",
+    n_hours_wind_speed_mean = "INTEGER",
+    n_hours_wind_gust_max = "INTEGER",
     temp_mean_c = "DOUBLE",
     temp_min_c = "DOUBLE",
     temp_max_c = "DOUBLE",
@@ -113,7 +126,14 @@ assert_parquet_schema <- function(con, path, table) {
   return(invisible(NULL))
 }
 
-write_manifest <- function(con, output_dir, version, build_commit) {
+write_manifest <- function(
+  con,
+  output_dir,
+  version,
+  build_commit,
+  provenance = NULL,
+  coverage = NULL
+) {
   tables <- list()
   for (table in c("hourly", "daily", "stations")) {
     paths <- if (table == "stations") {
@@ -159,12 +179,23 @@ write_manifest <- function(con, output_dir, version, build_commit) {
       })
     )
   }
+  retrieved_at <- NULL
+  if (length(provenance)) {
+    retrieved_at <- unlist(lapply(provenance, `[[`, "retrieved_at_utc"))
+    retrieved_at <- if (length(retrieved_at)) max(retrieved_at) else NULL
+  }
   manifest <- list(
     version = version,
-    schema_version = 2L,
+    schema_version = 3L,
     build_commit = build_commit,
-    retrieved_at = NULL,
+    retrieved_at = retrieved_at,
     source_url = "https://portal.inmet.gov.br/dadoshistoricos",
+    sources = if (length(provenance)) unname(provenance),
+    coverage = if (length(coverage)) {
+      lapply(seq_len(nrow(coverage)), function(i) {
+        return(as.list(coverage[i, ]))
+      })
+    },
     tables = tables
   )
   jsonlite::write_json(
@@ -263,5 +294,38 @@ validate_output <- function(con, output_dir, report_dir) {
   if (invalid != 0L) {
     cli::cli_abort("Daily n_hours is outside 0-24.")
   }
+  coverage <- paste0("n_hours_", names(daily_aggregates))
+  invalid_coverage <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "
+    SELECT count(*) AS n FROM read_parquet('%s')
+    WHERE %s OR %s",
+      daily,
+      paste(
+        sprintf("%s < 0 OR %s > n_hours", coverage, coverage),
+        collapse = " OR "
+      ),
+      paste(sprintf("%s IS NULL", coverage), collapse = " OR ")
+    )
+  )$n
+  if (invalid_coverage != 0L) {
+    cli::cli_abort("Daily coverage counts are outside 0-n_hours.")
+  }
+  coverage_by_year <- DBI::dbGetQuery(
+    con,
+    sprintf(
+      "SELECT year, %s FROM read_parquet('%s') GROUP BY year ORDER BY year",
+      paste(
+        sprintf("avg(%s) AS %s", coverage, coverage),
+        collapse = ", "
+      ),
+      daily
+    )
+  )
+  data.table::fwrite(
+    coverage_by_year,
+    file.path(report_dir, "daily-coverage-by-year.csv")
+  )
   return(invisible(list(hourly = counts, daily = daily_counts)))
 }

@@ -1,3 +1,5 @@
+# Keep the published schema 2 release pinned until the schema 3 build is
+# uploaded. Move this pin in the release commit, not before.
 .data_version <- "2026-10-24"
 .release_url <- paste0(
   "https://github.com/viniciusoike/inmetr/releases/download/data-",
@@ -188,9 +190,10 @@ inmet_cache_clear <- function(ask = interactive()) {
       ))
     }
   )
+  # Schema 3 adds daily n_hours_* coverage; schema 2 releases stay readable.
   if (
     !identical(manifest$version, .data_version) ||
-      !identical(manifest$schema_version, 2L) ||
+      !manifest$schema_version %in% c(2L, 3L) ||
       !all(c("daily", "hourly", "stations") %in% names(manifest$tables))
   ) {
     cli::cli_abort(

@@ -6,7 +6,7 @@ title: "Get started with inmetr"
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
 ```
 
-inmetr reads hourly and daily observations from INMET's automatic weather stations. The data run from 2000 to February 2025. Each table is split into one Parquet file per year. inmetr downloads only the years you ask for and queries them with DuckDB, so you filter and summarise with dplyr before anything enters memory.
+inmetr reads hourly and daily observations from INMET's automatic weather stations. The data run from 2000 to October 2026. Each table is split into one Parquet file per year. inmetr downloads only the years you ask for and queries them with DuckDB, so you filter and summarise with dplyr before anything enters memory.
 
 ```{r setup, message = FALSE}
 library(inmetr)
@@ -62,7 +62,19 @@ monthly <- daily |>
 monthly
 ```
 
-inmetr publishes INMET's values without outlier filtering or coverage thresholds, so choose a coverage rule that suits your analysis. The query above keeps days with a mean temperature and at least 18 hours of data, and `n_days` reports how many days each month retains. `n_hours` counts hours with at least one valid measurement of any variable, so it doesn't guarantee 18 hours of temperature readings. For variable-specific coverage, count non-missing values in the hourly table.
+inmetr publishes INMET's values without outlier filtering or coverage thresholds, so choose a coverage rule that suits your analysis. The query above keeps days with a mean temperature and at least 18 hours of data, and `n_days` reports how many days each month retains. `n_hours` counts hours with at least one valid measurement of any variable, so it doesn't guarantee 18 hours of temperature readings. Use the `n_hours_*` column for the variable you need; each counts that aggregate's non-missing hourly inputs.
+
+```{r}
+days <- daily |>
+  filter(n_hours_temp_max >= 18) |>
+  group_by(year) |>
+  summarise(n_days = n(), .groups = "drop") |>
+  collect()
+
+days
+```
+
+For `temp_min_c`, `temp_max_c`, `rel_humidity_min_pct`, and `rel_humidity_max_pct`, the count includes an hour where the previous-hour extreme is missing but the hourly reading is present. A zero total is a measured zero, while a missing total means every contributing hour was missing.
 
 The daily table aggregates the hourly one by local standard date. For sub-daily questions, use `read_inmet("hourly", years = ...)` the same way. Timestamps there are in UTC, and `date_local` and `hour_local` give the station's local standard time.
 

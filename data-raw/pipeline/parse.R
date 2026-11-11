@@ -46,7 +46,7 @@ parse_metadata_number <- function(
   path = "<value>",
   name = "value"
 ) {
-  if (allow_missing && value == "F") {
+  if (allow_missing && toupper(trimws(value)) %in% c("F", "NULL", "")) {
     return(NA_real_)
   }
   result <- suppressWarnings(as.numeric(sub(",", ".", value, fixed = TRUE)))
