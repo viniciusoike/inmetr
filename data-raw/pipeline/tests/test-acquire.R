@@ -748,3 +748,141 @@ testthat::test_that("audit failure leaves no partial new year evidence", {
   )))
   testthat::expect_false(dir.exists(file.path(root, "official", "history")))
 })
+
+testthat::test_that("summary install failure rolls back the entire revision", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  add_official_year(root, 2025L, c("a.CSV" = "old\n"))
+  summary_path <- file.path(root, "official", "revisions.csv")
+  data.table::fwrite(
+    data.table::data.table(year = 2025L, changed_values = 1L),
+    summary_path
+  )
+  before <- evidence_snapshot(root, 2025L)
+  summary_before <- file_bytes(summary_path)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new\n"))
+  env <- environment(acquire_year)
+  original_audit <- get("audit_revisions", envir = env)
+  original_move <- get("commit_move", envir = env)
+  assign(
+    "audit_revisions",
+    function(...) list(year = 2025L, changed_values = 9L),
+    envir = env
+  )
+  assign(
+    "commit_move",
+    function(state, from, to) {
+      if (identical(to, summary_path)) {
+        cli::cli_abort("simulated summary install failure")
+      }
+      return(original_move(state, from, to))
+    },
+    envir = env
+  )
+  on.exit(assign("audit_revisions", original_audit, envir = env), add = TRUE)
+  on.exit(assign("commit_move", original_move, envir = env), add = TRUE)
+  testthat::expect_error(
+    acquire_years(
+      2025L,
+      root,
+      refresh = TRUE,
+      transport = fixture_transport(revised)
+    ),
+    "simulated summary install failure"
+  )
+  testthat::expect_equal(evidence_snapshot(root, 2025L), before)
+  testthat::expect_equal(file_bytes(summary_path), summary_before)
+  assign("commit_move", original_move, envir = env)
+  acquire_years(
+    2025L,
+    root,
+    refresh = TRUE,
+    transport = fixture_transport(revised)
+  )
+  testthat::expect_equal(data.table::fread(summary_path)$changed_values, 9L)
+})
+
+testthat::test_that("a later year failure keeps the committed summary current", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  add_official_year(root, 2025L, c("a.CSV" = "old\n"))
+  summary_path <- file.path(root, "official", "revisions.csv")
+  data.table::fwrite(
+    data.table::data.table(year = c(2024L, 2025L), changed_values = c(2L, 1L)),
+    summary_path
+  )
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new\n"))
+  env <- environment(acquire_year)
+  original_audit <- get("audit_revisions", envir = env)
+  assign(
+    "audit_revisions",
+    function(...) list(year = 2025L, changed_values = 9L),
+    envir = env
+  )
+  on.exit(assign("audit_revisions", original_audit, envir = env), add = TRUE)
+  transport <- list(download = function(url, destination) {
+    if (endsWith(url, "/2026.zip")) {
+      cli::cli_abort("simulated later year failure")
+    }
+    file.copy(revised, destination)
+    return(list(headers = list()))
+  })
+  testthat::expect_error(
+    acquire_years(c(2025L, 2026L), root, refresh = TRUE, transport = transport),
+    "simulated later year failure"
+  )
+  testthat::expect_equal(
+    data.table::fread(summary_path)$changed_values,
+    c(2L, 9L)
+  )
+  testthat::expect_equal(
+    readLines(file.path(root, "official", "inmet_2025", "a.CSV")),
+    "new"
+  )
+  acquire_years(2025L, root, transport = refusing_transport())
+  testthat::expect_equal(
+    data.table::fread(summary_path)$changed_values,
+    c(2L, 9L)
+  )
+})
+
+testthat::test_that("summary install failure leaves no partial new year", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+  summary_path <- file.path(root, "official", "revisions.csv")
+  env <- environment(acquire_year)
+  original_audit <- get("audit_revisions", envir = env)
+  original_move <- get("commit_move", envir = env)
+  assign(
+    "audit_revisions",
+    function(...) list(year = 2026L, changed_values = 9L),
+    envir = env
+  )
+  assign(
+    "commit_move",
+    function(state, from, to) {
+      if (identical(to, summary_path)) {
+        cli::cli_abort("simulated summary install failure")
+      }
+      return(original_move(state, from, to))
+    },
+    envir = env
+  )
+  on.exit(assign("audit_revisions", original_audit, envir = env), add = TRUE)
+  on.exit(assign("commit_move", original_move, envir = env), add = TRUE)
+  testthat::expect_error(
+    acquire_years(2026L, root, transport = fixture_transport(source)),
+    "simulated summary install failure"
+  )
+  testthat::expect_equal(
+    list.files(root, recursive = TRUE, all.files = TRUE, no.. = TRUE),
+    character()
+  )
+})

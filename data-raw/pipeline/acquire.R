@@ -594,7 +594,11 @@ preserve_previous_evidence <- function(
 install_audit <- function(state, audit_dir, official_dir) {
   files <- list.files(audit_dir, full.names = TRUE)
   for (file in files) {
-    commit_move(state, file, file.path(official_dir, basename(file)))
+    destination <- file.path(official_dir, basename(file))
+    if (file.exists(destination)) {
+      commit_backup(state, destination)
+    }
+    commit_move(state, file, destination)
   }
   return(invisible(NULL))
 }
@@ -1042,6 +1046,11 @@ refresh_revision <- function(
     staged$extract,
     output_dir = staged$audit_dir
   )
+  write_revision_summary(
+    data.table::rbindlist(list(audit)),
+    official_dir,
+    output_dir = staged$audit_dir
+  )
   revisions_copy <- stage_revisions_copy(official_dir, tag)
   if (!is.null(revisions_copy)) {
     on.exit(unlink(revisions_copy), add = TRUE)
@@ -1141,6 +1150,11 @@ install_new_year <- function(
     year,
     legacy_year_dir(data_root, year),
     staged$extract,
+    output_dir = staged$audit_dir
+  )
+  write_revision_summary(
+    data.table::rbindlist(list(audit)),
+    official_dir,
     output_dir = staged$audit_dir
   )
   provenance_path <- file.path(official_dir, "provenance.json")
@@ -1260,7 +1274,11 @@ acquire_year <- function(
   ))
 }
 
-write_revision_summary <- function(audit, official_dir) {
+write_revision_summary <- function(
+  audit,
+  official_dir,
+  output_dir = official_dir
+) {
   if (!length(audit) || !nrow(audit)) {
     return(invisible(NULL))
   }
@@ -1273,7 +1291,7 @@ write_revision_summary <- function(audit, official_dir) {
     ))
     data.table::setorder(audit, year)
   }
-  data.table::fwrite(audit, revisions_path)
+  data.table::fwrite(audit, file.path(output_dir, "revisions.csv"))
   return(invisible(NULL))
 }
 
@@ -1295,7 +1313,6 @@ acquire_years <- function(
     audit[[as.character(year)]] <- result$audit
   }
   audit <- data.table::rbindlist(Filter(Negate(is.null), audit))
-  write_revision_summary(audit, file.path(data_root, "official"))
   cli::cli_alert_success(
     "Verified {length(years)} official INMET years under {.path {data_root}}."
   )
