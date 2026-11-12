@@ -147,11 +147,76 @@ archive_listing <- function(path) {
   ))
 }
 
+read_zip_uint <- function(bytes, offset, size) {
+  values <- as.numeric(bytes[offset + seq_len(size)])
+  return(sum(values * 256^(seq_len(size) - 1L)))
+}
+
+zip_hex32 <- function(value) {
+  return(paste0(
+    sprintf("%02x", floor(value / 256^(3:0)) %% 256),
+    collapse = ""
+  ))
+}
+
+# `utils::unzip()` does not report CRC failures for every method, so read the
+# central directory and compare each extracted member's CRC-32 explicitly.
+archive_crcs <- function(path) {
+  bytes <- readBin(path, "raw", file.info(path)$size)
+  if (length(bytes) < 22L) {
+    cli::cli_abort("Archive {.file {path}} is not a ZIP file.")
+  }
+  starts <- which(bytes == as.raw(0x50))
+  starts <- starts[starts + 3L <= length(bytes)]
+  starts <- starts[
+    bytes[starts + 1L] == as.raw(0x4b) &
+      bytes[starts + 2L] == as.raw(0x05) &
+      bytes[starts + 3L] == as.raw(0x06)
+  ]
+  if (!length(starts)) {
+    cli::cli_abort("Archive {.file {path}} has no ZIP central directory.")
+  }
+  end <- max(starts)
+  entries <- read_zip_uint(bytes, end + 9L, 2L)
+  offset <- read_zip_uint(bytes, end + 15L, 4L)
+  position <- offset + 1L
+  names <- character(entries)
+  crcs <- character(entries)
+  for (index in seq_len(entries)) {
+    if (position + 46L > length(bytes)) {
+      cli::cli_abort(
+        "Archive {.file {path}} has a truncated central directory."
+      )
+    }
+    if (
+      !identical(
+        bytes[position:(position + 3L)],
+        as.raw(c(0x50, 0x4b, 0x01, 0x02))
+      )
+    ) {
+      cli::cli_abort("Archive {.file {path}} has an invalid central directory.")
+    }
+    crcs[[index]] <- zip_hex32(read_zip_uint(bytes, position + 15L, 4L))
+    name_length <- read_zip_uint(bytes, position + 27L, 2L)
+    extra_length <- read_zip_uint(bytes, position + 29L, 2L)
+    comment_length <- read_zip_uint(bytes, position + 31L, 2L)
+    name_start <- position + 46L
+    name_end <- name_start + name_length - 1L
+    if (name_end > length(bytes)) {
+      cli::cli_abort("Archive {.file {path}} has a truncated member name.")
+    }
+    names[[index]] <- rawToChar(bytes[name_start:name_end])
+    position <- name_end + 1L + extra_length + comment_length
+  }
+  return(data.table::data.table(name = basename(names), crc32 = crcs))
+}
+
 archive_members <- function(path, listing = archive_listing(path)) {
   unpacked <- tempfile("inmet-members-")
   dir.create(unpacked)
   on.exit(unlink(unpacked, recursive = TRUE), add = TRUE)
   utils::unzip(path, exdir = unpacked)
+  files <- scan_csv_files(unpacked)
   members <- file_hashes(unpacked)
   if (
     nrow(members) != length(listing$names) ||
@@ -159,6 +224,22 @@ archive_members <- function(path, listing = archive_listing(path)) {
   ) {
     cli::cli_abort(
       "Archive {.file {path}} changed while its members were extracted."
+    )
+  }
+  crcs <- archive_crcs(path)
+  expected_crc <- stats::setNames(crcs$crc32, crcs$name)
+  actual_crc <- vapply(
+    files,
+    digest::digest,
+    character(1),
+    algo = "crc32",
+    file = TRUE
+  )
+  names(actual_crc) <- basename(files)
+  compared_crc <- actual_crc[members$name] == expected_crc[members$name]
+  if (anyNA(compared_crc) || !all(compared_crc)) {
+    cli::cli_abort(
+      "Archive {.file {path}} member CRC-32 values do not match its central directory."
     )
   }
   sizes <- stats::setNames(listing$sizes, listing$names)

@@ -8,10 +8,11 @@
 #   Rscript data-raw/acquire.R [--refresh] [YEARS...]
 #
 # Cache reuse never contacts the network and never rewrites retrieval metadata.
-# `--refresh` downloads the selected years, compares bytes with the cache, and
-# stages revised archives, extracts, inventory and provenance under
-# data/official/history/ instead of overwriting them. Existing files are never
-# overwritten in place. Nothing is uploaded.
+# `--refresh` downloads the selected years, validates every downloaded archive
+# in hidden staging, and only then installs it with rollback. Revised prior
+# archives, extracts, inventory, provenance and audit files move under
+# data/official/history/ instead of being overwritten in place. Nothing is
+# uploaded.
 
 dependencies <- c("cli", "data.table", "digest", "here", "jsonlite")
 missing <- dependencies[

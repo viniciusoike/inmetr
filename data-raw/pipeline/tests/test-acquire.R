@@ -290,3 +290,461 @@ testthat::test_that("truncated downloads abort before caching", {
   )))
   testthat::expect_false(dir.exists(file.path(root, "official", "inmet_2026")))
 })
+
+testthat::test_that("invalid refresh leaves current evidence untouched", {
+  cases <- c("nonzip", "truncated", "broken-member")
+  for (case in cases) {
+    root <- local_official_root()
+    fixture <- add_official_year(
+      root,
+      2025L,
+      c("a.CSV" = "old a\n", "b.CSV" = "old b\n")
+    )
+    before <- evidence_snapshot(root, 2025L)
+    source <- tempfile(fileext = ".zip")
+    if (case == "nonzip") {
+      writeLines("this is not a zip archive", source)
+    } else if (case == "truncated") {
+      zip_fixture(source, c("a.CSV" = "new a\n"))
+      bytes <- readBin(source, "raw", file.info(source)$size)
+      writeBin(bytes[seq_len(length(bytes) - 20L)], source)
+    } else {
+      zip_fixture(source, c("a.CSV" = "new a\n"), store = TRUE)
+      corrupt_zip_member(source, "new a\n")
+    }
+    testthat::expect_error(
+      acquire_year(
+        2025L,
+        root,
+        refresh = TRUE,
+        transport = fixture_transport(source)
+      ),
+      info = case
+    )
+    testthat::expect_equal(
+      evidence_snapshot(root, 2025L),
+      before,
+      info = case
+    )
+    testthat::expect_false(
+      dir.exists(file.path(root, "official", ".staging-inmet_2025")),
+      info = case
+    )
+    reused <- acquire_year(2025L, root, transport = refusing_transport())
+    testthat::expect_equal(
+      reused$entry$archive_sha256,
+      fixture$entry$archive_sha256,
+      info = case
+    )
+    unlink(root, recursive = TRUE)
+    unlink(source)
+  }
+})
+
+testthat::test_that("revised download without a cache preserves prior evidence", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  provenance_before <- file_bytes(
+    file.path(root, "official", "provenance.json")
+  )
+  inventory_before <- file_bytes(fixture$inventory)
+  extract_before <- file_hashes(fixture$target)
+  unlink(fixture$archive)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+  transport <- fixture_transport(
+    revised,
+    list(
+      last_modified = "Thu, 04 Jan 2024 00:00:00 GMT",
+      etag = "\"revised\"",
+      content_length = as.character(file.info(revised)$size)
+    )
+  )
+
+  result <- acquire_year(2025L, root, refresh = TRUE, transport = transport)
+
+  tag <- substr(fixture$entry$archive_sha256, 1L, 8L)
+  old_extract <- file.path(
+    root,
+    "official",
+    "history",
+    "extracts",
+    sprintf("inmet_2025-%s", tag)
+  )
+  old_inventory <- file.path(
+    root,
+    "official",
+    "history",
+    "inventory",
+    sprintf("files-2025-%s.csv", tag)
+  )
+  old_provenance <- file.path(
+    root,
+    "official",
+    "history",
+    "revisions",
+    tag,
+    "provenance.json"
+  )
+  testthat::expect_equal(file_hashes(old_extract), extract_before)
+  testthat::expect_equal(file_bytes(old_inventory), inventory_before)
+  testthat::expect_equal(file_bytes(old_provenance), provenance_before)
+  previous <- result$entry$previous[[1]]
+  testthat::expect_equal(previous$archive_sha256, fixture$entry$archive_sha256)
+  testthat::expect_true(is.na(previous$archive_path))
+  testthat::expect_true(isTRUE(previous$archive_missing))
+  testthat::expect_false(identical(
+    previous$archive_path,
+    "cache/inmet-2025.zip"
+  ))
+  testthat::expect_equal(
+    readLines(file.path(root, "official", "inmet_2025", "a.CSV")),
+    "new a"
+  )
+  testthat::expect_equal(
+    result$entry$archive_sha256,
+    digest::digest(file = revised, algo = "sha256")
+  )
+  testthat::expect_equal(
+    result$entry$last_modified,
+    "Thu, 04 Jan 2024 00:00:00 GMT"
+  )
+  stored <- jsonlite::fromJSON(
+    file.path(root, "official", "provenance.json"),
+    simplifyVector = FALSE
+  )
+  testthat::expect_null(stored[["2025"]]$previous[[1]]$archive_path)
+  testthat::expect_true(stored[["2025"]]$previous[[1]]$archive_missing)
+})
+
+testthat::test_that("same bytes redownload restores a missing cache", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  file.copy(fixture$archive, source)
+  unlink(fixture$archive)
+  transport <- fixture_transport(source)
+
+  result <- acquire_year(2025L, root, refresh = TRUE, transport = transport)
+
+  testthat::expect_true(file.exists(fixture$archive))
+  testthat::expect_equal(
+    digest::digest(file = fixture$archive, algo = "sha256"),
+    fixture$entry$archive_sha256
+  )
+  testthat::expect_equal(
+    result$entry$retrieved_at_utc,
+    fixture$entry$retrieved_at_utc
+  )
+  testthat::expect_match(result$entry$revalidated_at_utc, "^20[0-9]{2}-")
+  testthat::expect_false(dir.exists(file.path(root, "official", "history")))
+})
+
+testthat::test_that("corrupt cache refresh recovers and preserves extraction", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  inventory_before <- file_bytes(fixture$inventory)
+  tamper_file(fixture$archive)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+
+  result <- acquire_year(
+    2025L,
+    root,
+    refresh = TRUE,
+    transport = fixture_transport(revised)
+  )
+
+  tag <- substr(fixture$entry$archive_sha256, 1L, 8L)
+  previous <- result$entry$previous[[1]]
+  testthat::expect_true(isTRUE(previous$archive_missing))
+  testthat::expect_true(is.na(previous$archive_path))
+  testthat::expect_equal(
+    file_bytes(file.path(
+      root,
+      "official",
+      "history",
+      "inventory",
+      sprintf("files-2025-%s.csv", tag)
+    )),
+    inventory_before
+  )
+  testthat::expect_equal(
+    readLines(file.path(root, "official", "inmet_2025", "a.CSV")),
+    "new a"
+  )
+  testthat::expect_equal(
+    digest::digest(file = fixture$archive, algo = "sha256"),
+    digest::digest(file = revised, algo = "sha256")
+  )
+})
+
+testthat::test_that("revised download without an extraction keeps inventory", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  inventory_before <- file_bytes(fixture$inventory)
+  unlink(fixture$target, recursive = TRUE)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+
+  result <- acquire_year(
+    2025L,
+    root,
+    refresh = TRUE,
+    transport = fixture_transport(revised)
+  )
+
+  tag <- substr(fixture$entry$archive_sha256, 1L, 8L)
+  previous <- result$entry$previous[[1]]
+  testthat::expect_true(isTRUE(previous$extract_missing))
+  testthat::expect_true(is.na(previous$extract_path))
+  testthat::expect_equal(
+    file_bytes(file.path(
+      root,
+      "official",
+      "history",
+      "inventory",
+      sprintf("files-2025-%s.csv", tag)
+    )),
+    inventory_before
+  )
+  testthat::expect_equal(
+    readLines(file.path(root, "official", "inmet_2025", "a.CSV")),
+    "new a"
+  )
+})
+
+testthat::test_that("unverifiable old extraction aborts before mutation", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  tamper_file(file.path(fixture$target, "a.CSV"))
+  provenance_before <- file_bytes(
+    file.path(root, "official", "provenance.json")
+  )
+  inventory_before <- file_bytes(fixture$inventory)
+  unlink(fixture$archive)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+
+  testthat::expect_error(
+    acquire_year(
+      2025L,
+      root,
+      refresh = TRUE,
+      transport = fixture_transport(revised)
+    ),
+    "verified archive"
+  )
+  testthat::expect_false(file.exists(fixture$archive))
+  testthat::expect_equal(
+    file_bytes(file.path(root, "official", "provenance.json")),
+    provenance_before
+  )
+  testthat::expect_equal(file_bytes(fixture$inventory), inventory_before)
+})
+
+testthat::test_that("audit failure leaves revised evidence untouched", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  before <- evidence_snapshot(root, 2025L)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+  env <- environment(acquire_year)
+  original <- get("audit_revisions", envir = env)
+  assign(
+    "audit_revisions",
+    function(...) cli::cli_abort("simulated audit failure"),
+    envir = env
+  )
+  on.exit(assign("audit_revisions", original, envir = env), add = TRUE)
+
+  testthat::expect_error(
+    acquire_year(
+      2025L,
+      root,
+      refresh = TRUE,
+      transport = fixture_transport(revised)
+    ),
+    "simulated audit failure"
+  )
+  testthat::expect_equal(evidence_snapshot(root, 2025L), before)
+})
+
+testthat::test_that("install failure rolls back a revised year", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  fixture <- add_official_year(root, 2025L, c("a.CSV" = "old a\n"))
+  before <- evidence_snapshot(root, 2025L)
+  revised <- tempfile(fileext = ".zip")
+  on.exit(unlink(revised), add = TRUE)
+  zip_fixture(revised, c("a.CSV" = "new a\n"))
+  target <- fixture$target
+  env <- environment(acquire_year)
+  original <- get("commit_move", envir = env)
+  assign(
+    "commit_move",
+    function(state, from, to) {
+      if (identical(to, target)) {
+        cli::cli_abort("simulated install failure")
+      }
+      original(state, from, to)
+    },
+    envir = env
+  )
+  on.exit(assign("commit_move", original, envir = env), add = TRUE)
+
+  testthat::expect_error(
+    acquire_year(
+      2025L,
+      root,
+      refresh = TRUE,
+      transport = fixture_transport(revised)
+    ),
+    "simulated install failure"
+  )
+  testthat::expect_equal(evidence_snapshot(root, 2025L), before)
+})
+
+testthat::test_that("provenance install failure rolls back a new year", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+  provenance_path <- file.path(root, "official", "provenance.json")
+  env <- environment(acquire_year)
+  original <- get("commit_move", envir = env)
+  assign(
+    "commit_move",
+    function(state, from, to) {
+      if (identical(to, provenance_path)) {
+        cli::cli_abort("simulated provenance failure")
+      }
+      original(state, from, to)
+    },
+    envir = env
+  )
+  on.exit(assign("commit_move", original, envir = env), add = TRUE)
+
+  testthat::expect_error(
+    acquire_year(2026L, root, transport = fixture_transport(source)),
+    "simulated provenance failure"
+  )
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "cache",
+    "inmet-2026.zip"
+  )))
+  testthat::expect_false(dir.exists(file.path(root, "official", "inmet_2026")))
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "official",
+    "files-2026.csv"
+  )))
+  testthat::expect_false(file.exists(provenance_path))
+  testthat::expect_false(dir.exists(file.path(root, "official", "history")))
+})
+
+testthat::test_that("new year with matching orphan extraction recovers", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  target <- file.path(root, "official", "inmet_2026")
+  dir.create(target, recursive = TRUE)
+  writeLines("fresh", file.path(target, "a.CSV"))
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+
+  result <- acquire_year(2026L, root, transport = fixture_transport(source))
+
+  testthat::expect_equal(result$entry$file_count, 1L)
+  testthat::expect_equal(readLines(file.path(target, "a.CSV")), "fresh")
+  testthat::expect_true(file.exists(file.path(
+    root,
+    "official",
+    "files-2026.csv"
+  )))
+  testthat::expect_false(dir.exists(file.path(root, "official", "history")))
+})
+
+testthat::test_that("new year with conflicting orphan files aborts unchanged", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  target <- file.path(root, "official", "inmet_2026")
+  dir.create(target, recursive = TRUE)
+  writeLines("orphan", file.path(target, "a.CSV"))
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+
+  testthat::expect_error(
+    acquire_year(2026L, root, transport = fixture_transport(source)),
+    "verified archive"
+  )
+  testthat::expect_equal(readLines(file.path(target, "a.CSV")), "orphan")
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "cache",
+    "inmet-2026.zip"
+  )))
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "official",
+    "files-2026.csv"
+  )))
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "official",
+    "provenance.json"
+  )))
+})
+
+testthat::test_that("audit failure leaves no partial new year evidence", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+  env <- environment(acquire_year)
+  original <- get("audit_revisions", envir = env)
+  assign(
+    "audit_revisions",
+    function(...) cli::cli_abort("simulated audit failure"),
+    envir = env
+  )
+  on.exit(assign("audit_revisions", original, envir = env), add = TRUE)
+
+  testthat::expect_error(
+    acquire_year(2026L, root, transport = fixture_transport(source)),
+    "simulated audit failure"
+  )
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "cache",
+    "inmet-2026.zip"
+  )))
+  testthat::expect_false(dir.exists(file.path(root, "official", "inmet_2026")))
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "official",
+    "files-2026.csv"
+  )))
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "official",
+    "provenance.json"
+  )))
+  testthat::expect_false(dir.exists(file.path(root, "official", "history")))
+})

@@ -4,7 +4,7 @@ local_official_root <- function() {
   return(tempfile("official-root-"))
 }
 
-zip_fixture <- function(path, contents) {
+zip_fixture <- function(path, contents, store = FALSE) {
   if (!nzchar(Sys.which("zip"))) {
     testthat::skip("The zip command is unavailable.")
   }
@@ -18,12 +18,42 @@ zip_fixture <- function(path, contents) {
   status <- utils::zip(
     zipfile = path,
     files = file.path(input, names(contents)),
-    flags = "-j9qX"
+    flags = if (store) "-j0qX" else "-j9qX"
   )
   if (!identical(status, 0L)) {
     testthat::stop("Could not create the ZIP fixture.")
   }
   return(path)
+}
+
+corrupt_zip_member <- function(path, content) {
+  bytes <- readBin(path, "raw", file.info(path)$size)
+  target <- charToRaw(content)
+  candidates <- which(bytes == target[[1L]])
+  for (start in candidates) {
+    end <- start + length(target) - 1L
+    if (end <= length(bytes) && identical(bytes[start:end], target)) {
+      bytes[[start]] <- as.raw(bitwXor(as.integer(bytes[[start]]), 1L))
+      writeBin(bytes, path)
+      return(invisible(path))
+    }
+  }
+  testthat::stop("Could not locate member content in the stored ZIP fixture.")
+}
+
+evidence_snapshot <- function(root, year) {
+  official <- file.path(root, "official")
+  target <- file.path(official, sprintf("inmet_%d", year))
+  return(list(
+    cache = digest::digest(
+      file = file.path(root, "cache", sprintf("inmet-%d.zip", year)),
+      algo = "sha256"
+    ),
+    extract = file_hashes(target),
+    inventory = file_bytes(file.path(official, sprintf("files-%d.csv", year))),
+    provenance = file_bytes(file.path(official, "provenance.json")),
+    history = dir.exists(file.path(official, "history"))
+  ))
 }
 
 add_official_year <- function(
