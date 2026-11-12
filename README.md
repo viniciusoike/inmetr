@@ -21,3 +21,5 @@ city_daily <- daily |>
 ```
 
 The data release is downloaded on first use into the user cache. Downloaded files are checked against their SHA-256 hashes. Later reads check file size; use `inmet_cache_clear()` to recover from suspected cache corruption.
+
+Daily rows carry `n_hours` for overall coverage. The staged schema 3 release adds a `n_hours_*` column for each aggregate; these columns become available by default after publication and the package data-version update. The current default release uses schema 2.

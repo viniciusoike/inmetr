@@ -89,6 +89,22 @@ write_hourly_year <- function(
   ))
 }
 
+# Each daily aggregate and the hourly expression that contributes to it.
+daily_aggregates <- c(
+  temp_mean = "temp_dry_bulb_c",
+  temp_min = "coalesce(temp_min_c, temp_dry_bulb_c)",
+  temp_max = "coalesce(temp_max_c, temp_dry_bulb_c)",
+  temp_dew_point_mean = "temp_dew_point_c",
+  rel_humidity_mean = "rel_humidity_pct",
+  rel_humidity_min = "coalesce(rel_humidity_min_pct, rel_humidity_pct)",
+  rel_humidity_max = "coalesce(rel_humidity_max_pct, rel_humidity_pct)",
+  precip_total = "precip_mm",
+  radiation_total = "radiation_kj_m2",
+  pressure_station_mean = "pressure_station_hpa",
+  wind_speed_mean = "wind_speed_ms",
+  wind_gust_max = "wind_gust_ms"
+)
+
 write_daily <- function(con, output_dir) {
   hourly <- gsub(
     "'",
@@ -98,6 +114,16 @@ write_daily <- function(con, output_dir) {
   )
   daily_dir <- file.path(output_dir, "daily")
   dir.create(daily_dir, recursive = TRUE, showWarnings = FALSE)
+  coverage <- sprintf(
+    "count(*) FILTER (WHERE %s IS NOT NULL) AS n_hours_%s",
+    unname(daily_aggregates),
+    names(daily_aggregates)
+  )
+  coverage_select <- sprintf(
+    "CAST(n_hours_%s AS INTEGER) AS n_hours_%s",
+    names(daily_aggregates),
+    names(daily_aggregates)
+  )
   # A missing aggregate stays NULL; SUM never turns an entirely missing day into zero.
   query <- sprintf(
     "
@@ -117,6 +143,7 @@ write_daily <- function(con, output_dir) {
           avg(pressure_station_hpa) AS pressure_station_mean_hpa,
           avg(wind_speed_ms) AS wind_speed_mean_ms,
           max(wind_gust_ms) AS wind_gust_max_ms,
+          %s,
           first(code_muni) AS code_muni, first(name_muni) AS name_muni,
           first(abbrev_state) AS abbrev_state
         FROM read_parquet('%s') GROUP BY 1, 2
@@ -126,6 +153,7 @@ write_daily <- function(con, output_dir) {
         CAST(dayofyear(date) AS INTEGER) AS day_of_year,
         CAST(week(date) AS INTEGER) AS week, CAST(isodow(date) AS INTEGER) AS weekday,
         CAST(n_hours AS INTEGER) AS n_hours,
+        %s,
         temp_mean_c, temp_min_c, temp_max_c, temp_dew_point_mean_c,
         rel_humidity_mean_pct, rel_humidity_min_pct, rel_humidity_max_pct,
         precip_total_mm, radiation_total_kj_m2, pressure_station_mean_hpa,
@@ -135,7 +163,9 @@ write_daily <- function(con, output_dir) {
       WRITE_PARTITION_COLUMNS true,
       FILENAME_PATTERN 'part-{i}')",
     paste(paste0(inmet_variables, " IS NOT NULL"), collapse = " OR "),
+    paste(coverage, collapse = ",\n          "),
     hourly,
+    paste(coverage_select, collapse = ",\n        "),
     gsub("'", "''", daily_dir, fixed = TRUE)
   )
   DBI::dbExecute(con, "SET threads = 1")

@@ -1,6 +1,6 @@
 {
   "version": "2026-10-24",
-  "schema_version": 2,
+  "schema_version": 3,
   "build_commit": "fixture",
   "retrieved_at": null,
   "source_url": "fixture",
@@ -9,14 +9,14 @@
       "files": [
         {
           "path": "daily/year=2023/part-0.parquet",
-          "size": 934,
-          "sha256": "bab8592d5d7e7976fc43bd7793d9a6667149cfb161f914fbb0e163d9698079c0",
+          "size": 2716,
+          "sha256": "2cce94b6aa14b505ae560e0665bdb310bf68636289cbe6dae70e817066b2a5a4",
           "row_count": 1
         },
         {
           "path": "daily/year=2024/part-0.parquet",
-          "size": 934,
-          "sha256": "65974bb1fee7245336435e0f6edf876d5b0c573a22d234253204497ef13cdf5c",
+          "size": 2716,
+          "sha256": "90c2eb0319c9b4bc5f4a094a2180d704eb083a1c6dee6590dd7c7efa7c89f8e5",
           "row_count": 1
         }
       ],
@@ -34,6 +34,10 @@
           "type": "INTEGER"
         },
         {
+          "name": "n_hours",
+          "type": "INTEGER"
+        },
+        {
           "name": "code_muni",
           "type": "INTEGER"
         },
@@ -48,6 +52,54 @@
         {
           "name": "temp_mean_c",
           "type": "DOUBLE"
+        },
+        {
+          "name": "n_hours_temp_mean",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_temp_min",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_temp_max",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_temp_dew_point_mean",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_rel_humidity_mean",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_rel_humidity_min",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_rel_humidity_max",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_precip_total",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_radiation_total",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_pressure_station_mean",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_wind_speed_mean",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n_hours_wind_gust_max",
+          "type": "INTEGER"
         }
       ]
     },

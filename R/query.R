@@ -100,6 +100,16 @@
 #' | `day_of_year` | Day of the year, 1–366 |
 #' | `week`, `weekday` | ISO week (1–53) and ISO weekday (Monday = 1) |
 #' | `n_hours` | Hours with at least one non-missing measurement, 0–24 |
+#' | `n_hours_temp_mean` | Hours contributing to the daily mean temperature, 0–24 |
+#' | `n_hours_temp_min`, `n_hours_temp_max` | Hours contributing to the daily temperature extremes, including the dry-bulb fallback, 0–24 |
+#' | `n_hours_temp_dew_point_mean` | Hours contributing to the daily mean dew point, 0–24 |
+#' | `n_hours_rel_humidity_mean` | Hours contributing to the daily mean relative humidity, 0–24 |
+#' | `n_hours_rel_humidity_min`, `n_hours_rel_humidity_max` | Hours contributing to the daily humidity extremes, including the hourly fallback, 0–24 |
+#' | `n_hours_precip_total` | Hours contributing to the daily precipitation total, 0–24 |
+#' | `n_hours_radiation_total` | Hours contributing to the daily radiation total, 0–24 |
+#' | `n_hours_pressure_station_mean` | Hours contributing to the daily mean station pressure, 0–24 |
+#' | `n_hours_wind_speed_mean` | Hours contributing to the daily mean wind speed, 0–24 |
+#' | `n_hours_wind_gust_max` | Hours contributing to the daily maximum gust, 0–24 |
 #' | `temp_mean_c` | Mean dry-bulb temperature, °C |
 #' | `temp_min_c`, `temp_max_c` | Lowest and highest hourly air-temperature extreme, °C; see below |
 #' | `temp_dew_point_mean_c` | Mean dew-point temperature, °C |
@@ -119,9 +129,13 @@
 #'   Counting rows per station-year therefore counts calendar days, not days
 #'   with data. Filter on `n_hours` first.
 #' * **`n_hours` counts hours with any measurement.** A day can have
-#'   `n_hours == 24` while one variable is missing all day. Coverage rules for
-#'   a single variable need the hourly table; the example below counts hours
-#'   with `temp_max_c`.
+#'   `n_hours == 24` while one variable is missing all day. Each `n_hours_*`
+#'   column counts the non-missing hourly inputs of its own aggregate, so use
+#'   it to filter coverage for that variable. The counts include both the
+#'   previous-hour extreme and its hourly fallback for `temp_min_c`,
+#'   `temp_max_c`, `rel_humidity_min_pct`, and `rel_humidity_max_pct`.
+#'   Schema 3 adds these columns; the pinned `2026-10-24` release predates
+#'   them, and on that release the hourly table gives the same counts.
 #' * **Extremes fall back to the hourly reading.** For each hour,
 #'   `temp_max_c` uses the hourly maximum when present and `temp_dry_bulb_c`
 #'   otherwise. `temp_min_c`, `rel_humidity_max_pct` and
@@ -159,6 +173,13 @@
 #'     .by = c("code_station", "date_local")
 #'   ) |>
 #'   dplyr::collect()
+#'
+#' # Schema 3 counts include fallback readings for daily extremes.
+#' if ("n_hours_temp_max" %in% colnames(daily)) {
+#'   daily |>
+#'     dplyr::filter(.data$n_hours_temp_max >= 18) |>
+#'     dplyr::collect()
+#' }
 read_inmet <- function(table = c("daily", "hourly"), years = NULL) {
   call <- sys.call()
   table <- rlang::arg_match(table)

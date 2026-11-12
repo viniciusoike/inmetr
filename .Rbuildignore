@@ -3,6 +3,7 @@
 ^data-raw$
 ^LICENSE\.md$
 ^\.git$
+(^|/)\._
 ^data$
 ^\.claude$
 ^\.github$

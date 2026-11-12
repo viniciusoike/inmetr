@@ -8,17 +8,34 @@ write_part <- function(dat, path) {
   DBI::dbExecute(con, sprintf("COPY fixture TO '%s' (FORMAT parquet)", path))
   return(DBI::dbRemoveTable(con, "fixture"))
 }
+coverage <- c(
+  n_hours_temp_mean = 24L,
+  n_hours_temp_min = 24L,
+  n_hours_temp_max = 24L,
+  n_hours_temp_dew_point_mean = 24L,
+  n_hours_rel_humidity_mean = 24L,
+  n_hours_rel_humidity_min = 24L,
+  n_hours_rel_humidity_max = 24L,
+  n_hours_precip_total = 24L,
+  n_hours_radiation_total = 24L,
+  n_hours_pressure_station_mean = 24L,
+  n_hours_wind_speed_mean = 24L,
+  n_hours_wind_gust_max = 24L
+)
 for (year in c(2023L, 2024L)) {
+  daily <- data.frame(
+    code_station = "A701",
+    date = as.Date(sprintf("%d-01-01", year)),
+    year = year,
+    n_hours = 24L,
+    code_muni = 3550308L,
+    name_muni = "São Paulo",
+    abbrev_state = "SP",
+    temp_mean_c = 20 + year - 2023
+  )
+  daily[names(coverage)] <- as.list(coverage)
   write_part(
-    data.frame(
-      code_station = "A701",
-      date = as.Date(sprintf("%d-01-01", year)),
-      year = year,
-      code_muni = 3550308L,
-      name_muni = "São Paulo",
-      abbrev_state = "SP",
-      temp_mean_c = 20 + year - 2023
-    ),
+    daily,
     file.path(root, sprintf("daily/year=%d/part-0.parquet", year))
   )
   write_part(
@@ -55,7 +72,7 @@ write_part(
 )
 manifest <- list(
   version = "2026-10-24",
-  schema_version = 2L,
+  schema_version = 3L,
   build_commit = "fixture",
   retrieved_at = NULL,
   source_url = "fixture",

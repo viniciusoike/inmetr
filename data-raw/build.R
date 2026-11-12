@@ -30,6 +30,8 @@ if (length(missing_dependencies)) {
 }
 
 source(here::here("data-raw", "pipeline", "parse.R"))
+source(here::here("data-raw", "pipeline", "archive.R"))
+source(here::here("data-raw", "pipeline", "inventory.R"))
 source(here::here("data-raw", "pipeline", "stations.R"))
 source(here::here("data-raw", "pipeline", "write.R"))
 source(here::here("data-raw", "pipeline", "manifest.R"))
@@ -45,6 +47,18 @@ build_commit <- get_build_commit(
 version <- format(Sys.Date(), "%Y-%m-%d")
 output_root <- here::here("data-raw", "output")
 output_dir <- file.path(output_root, if (sample) "sample" else version)
+if (!sample) {
+  # Repeated same-day builds get a suffix instead of replacing an earlier one.
+  revision <- 1L
+  while (
+    dir.exists(output_dir) ||
+      dir.exists(paste0(output_dir, ".tmp"))
+  ) {
+    revision <- revision + 1L
+    version <- sprintf("%s-r%d", format(Sys.Date(), "%Y-%m-%d"), revision)
+    output_dir <- file.path(output_root, version)
+  }
+}
 if (dir.exists(output_dir)) {
   cli::cli_abort("Output already exists: {.file {output_dir}}.")
 }
@@ -55,22 +69,22 @@ if (dir.exists(working_dir)) {
 dir.create(working_dir, recursive = TRUE)
 report_dir <- file.path(working_dir, "reports")
 dir.create(report_dir)
-files <- list.files(
-  here::here("data-raw", "data", "zipped_files"),
-  pattern = "\\.[Cc][Ss][Vv]$",
-  recursive = TRUE,
-  full.names = TRUE
-)
-files <- files[!startsWith(basename(files), "._")]
+inventory <- discover_input_files(here::here("data-raw", "data"))
+files <- inventory$files$path
+years <- inventory$files$year
 if (sample) {
-  files <- files[grepl("inmet_(2001|2020)/", files)]
+  keep <- years %in% c(2001L, 2020L)
+  files <- files[keep]
+  years <- years[keep]
 }
 if (!length(files)) {
   cli::cli_abort("No INMET automatic-station CSV files found.")
 }
-years <- as.integer(sub(".*inmet_([0-9]{4})/.*", "\\1", files))
-if (anyNA(years) || any(years < 2000L | years > 2025L)) {
-  cli::cli_abort("Unexpected input year directory.")
+write_inventory_report(inventory, report_dir)
+if (nrow(inventory$superseded)) {
+  cli::cli_inform(
+    "Using refreshed official inputs for {length(unique(years))} years; {nrow(inventory$superseded)} legacy year directories are superseded."
+  )
 }
 cli::cli_inform(
   "Scanning {length(files)} station files across {length(unique(years))} years."
@@ -157,7 +171,40 @@ data.table::fwrite(
   file.path(report_dir, "input-by-year.csv")
 )
 validate_output(con, working_dir, report_dir)
-write_manifest(con, working_dir, version, build_commit)
+coverage <- DBI::dbGetQuery(
+  con,
+  sprintf(
+    "
+    SELECT year, min(timestamp_utc) AS first_obs, max(timestamp_utc) AS last_obs,
+      count(*) AS hours
+    FROM read_parquet('%s') GROUP BY year ORDER BY year",
+    hourly
+  )
+)
+coverage$first_obs <- format(
+  coverage$first_obs,
+  "%Y-%m-%dT%H:%M:%SZ",
+  tz = "UTC"
+)
+coverage$last_obs <- format(
+  coverage$last_obs,
+  "%Y-%m-%dT%H:%M:%SZ",
+  tz = "UTC"
+)
+provenance_path <- here::here("data-raw", "data", "official", "provenance.json")
+provenance <- if (file.exists(provenance_path)) {
+  jsonlite::fromJSON(provenance_path, simplifyVector = FALSE)
+} else {
+  NULL
+}
+write_manifest(
+  con,
+  working_dir,
+  version,
+  build_commit,
+  provenance = provenance,
+  coverage = coverage
+)
 DBI::dbDisconnect(con, shutdown = TRUE)
 unlink(c(
   file.path(working_dir, "final.duckdb"),

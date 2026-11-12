@@ -9,7 +9,7 @@ manifest <- jsonlite::fromJSON(
   simplifyVector = FALSE
 )
 version <- manifest$version
-if (!grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", version)) {
+if (!grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}(-r[0-9]+)?$", version)) {
   cli::cli_abort("Invalid build version in {.file manifest.json}.")
 }
 release <- here::here("data-raw", "release", version)

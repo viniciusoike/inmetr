@@ -28,7 +28,7 @@ Source: [INMET historical observations](https://portal.inmet.gov.br/dadoshistori
 
 ## Daily table
 
-Daily groups use station and `date_local`. All available hours contribute. SQL aggregates return missing when every source value is missing, including sums.
+Daily groups use station and `date_local`. All available hours contribute. SQL aggregates return missing when every source value is missing, including sums; a zero total means measured zeros, not an absent variable. Each `n_hours_*` column counts the non-missing hourly inputs for its own aggregate and never exceeds `n_hours`. For `temp_min_c`, `temp_max_c`, `rel_humidity_min_pct`, and `rel_humidity_max_pct`, a contributing hour is one where the previous-hour extreme or its hourly fallback is present.
 
 | Column | Unit or rule |
 | --- | --- |
@@ -39,6 +39,16 @@ Daily groups use station and `date_local`. All available hours contribute. SQL a
 | `week` | ISO week number, 1–53 |
 | `weekday` | ISO weekday, Monday = 1 |
 | `n_hours` | Distinct hours with at least one non-missing measurement, 0–24 |
+| `n_hours_temp_mean` | Hours with a non-missing dry-bulb temperature, 0–24 |
+| `n_hours_temp_min`, `n_hours_temp_max` | Hours contributing to the temperature extreme, counting both the previous-hour extreme and the dry-bulb fallback, 0–24 |
+| `n_hours_temp_dew_point_mean` | Hours with a non-missing dew point, 0–24 |
+| `n_hours_rel_humidity_mean` | Hours with a non-missing hourly relative humidity, 0–24 |
+| `n_hours_rel_humidity_min`, `n_hours_rel_humidity_max` | Hours contributing to the humidity extreme, counting both the previous-hour extreme and the hourly fallback, 0–24 |
+| `n_hours_precip_total` | Hours with a non-missing precipitation value, 0–24 |
+| `n_hours_radiation_total` | Hours with a non-missing radiation value, 0–24 |
+| `n_hours_pressure_station_mean` | Hours with a non-missing station pressure, 0–24 |
+| `n_hours_wind_speed_mean` | Hours with a non-missing wind speed, 0–24 |
+| `n_hours_wind_gust_max` | Hours with a non-missing gust, 0–24 |
 | `temp_mean_c` | Mean dry-bulb temperature, °C |
 | `temp_min_c`, `temp_max_c` | Minimum/maximum of previous-hour extremes, falling back to dry-bulb per hour, °C |
 | `temp_dew_point_mean_c` | Mean dew-point temperature, °C |
@@ -70,4 +80,6 @@ Municipalities come from a point-in-polygon join against `geobr::read_municipali
 
 Local dates use fixed standard time with no daylight saving adjustment, including historical observations. The [Brazilian legal time-zone map](https://www2.camara.leg.br/legin/fed/lei/2013/lei-12876-30-outubro-2013-777336-publicacaooriginal-141612-pl.html) gives UTC−3 for most states and all Pará, UTC−4 for MT/MS/RO/RR and eastern Amazonas, and UTC−5 for Acre and western Amazonas. The Amazonas boundary is approximated by a straight line from Tabatinga to Porto Acre using station coordinates. Fernando de Noronha and A302 use UTC−2. These are present-day standard offsets applied consistently to every year, not historical civil-time reconstruction.
 
-`manifest.json` records the build version, schema version (currently 2), Git HEAD as `build_commit`, source URL, verified physical Parquet schema, file sizes, SHA-256 digests, and row counts. `retrieved_at` is `null` because the downloaded files have no reliable retrieval timestamp. Full builds reject uncommitted pipeline or build-script changes unless `--allow-dirty` is passed; sample builds permit them.
+`manifest.json` records the build version, schema version (currently 3), Git HEAD as `build_commit`, source URL, verified physical Parquet schema, file sizes, SHA-256 digests, and row counts. `sources` records each official archive's URL, retrieval time, HTTP validators, SHA-256, size, declared CSV date span, and file count. `coverage` records the actual first and last observation in each hourly year partition. Full builds reject uncommitted pipeline or build-script changes unless `--allow-dirty` is passed; sample builds permit them.
+
+`data-raw/acquire.R` downloads each yearly archive to `data-raw/data/cache/`, verifies and extracts it separately to `data-raw/data/official/inmet_YYYY/`, and records the results in `official/provenance.json`. Existing legacy extracts under `data-raw/data/zipped_files/` stay in place for audit; `official/revisions.csv` reports file and value changes where the refreshed archive differs. The build uses an official year directory in preference to its legacy counterpart and records both in `reports/input-selection.csv` and `reports/superseded-inputs.csv`.

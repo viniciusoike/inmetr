@@ -234,6 +234,29 @@ test_that("DuckDB extension and secret storage stay outside the user home", {
   expect_false(startsWith(settings$secret_directory, paste0(home, "/")))
 })
 
+test_that("daily coverage counts follow the release schema", {
+  local_fixture()
+  daily <- dplyr::collect(read_inmet("daily", 2024))
+  coverage <- c(
+    "n_hours_temp_mean",
+    "n_hours_temp_min",
+    "n_hours_temp_max",
+    "n_hours_temp_dew_point_mean",
+    "n_hours_rel_humidity_mean",
+    "n_hours_rel_humidity_min",
+    "n_hours_rel_humidity_max",
+    "n_hours_precip_total",
+    "n_hours_radiation_total",
+    "n_hours_pressure_station_mean",
+    "n_hours_wind_speed_mean",
+    "n_hours_wind_gust_max"
+  )
+  expect_true(all(coverage %in% names(daily)))
+  expect_true(all(vapply(daily[coverage], is.integer, logical(1))))
+  expect_equal(daily$n_hours, 24L)
+  expect_true(all(unlist(daily[coverage]) == 24L))
+})
+
 test_that("lazy filtering and stations work offline", {
   local_fixture()
   expect_message(read_inmet("daily"), "MB")
