@@ -60,10 +60,13 @@
     
     
 <p>inmetr reads hourly and daily observations from INMET’s automatic
-weather stations. The data run from 2000 to February 2025. Each table is
-split into one Parquet file per year. inmetr downloads only the years
-you ask for and queries them with DuckDB, so you filter and summarise
-with dplyr before anything enters memory.</p>
+weather stations. The default release covers 2000 to February 2025. The
+locally staged schema 3 release extends coverage through October 2026
+and requires publication and a package data-version update before it
+becomes the default. Each table is split into one Parquet file per year.
+inmetr downloads only the years you ask for and queries them with
+DuckDB, so you filter and summarise with dplyr before anything enters
+memory.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://viniciusoike.github.io/inmetr/">inmetr</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dplyr.tidyverse.org" class="external-link">dplyr</a></span><span class="op">)</span></span></code></pre></div>
@@ -158,8 +161,26 @@ query above keeps days with a mean temperature and at least 18 hours of
 data, and <code>n_days</code> reports how many days each month retains.
 <code>n_hours</code> counts hours with at least one valid measurement of
 any variable, so it doesn’t guarantee 18 hours of temperature readings.
-For variable-specific coverage, count non-missing values in the hourly
-table.</p>
+The staged schema 3 release adds a <code>n_hours_*</code> column for
+each aggregate’s non-missing hourly inputs. These columns are
+unavailable in the default schema 2 release; use the hourly table to
+calculate variable-specific coverage with that release.</p>
+<p>The following example requires schema 3 and is not evaluated against
+the default release.</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">days</span> <span class="op">&lt;-</span> <span class="va">daily</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">n_hours_temp_max</span> <span class="op">&gt;=</span> <span class="fl">18</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/group_by.html" class="external-link">group_by</a></span><span class="op">(</span><span class="va">year</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/summarise.html" class="external-link">summarise</a></span><span class="op">(</span>n_days <span class="op">=</span> <span class="fu"><a href="https://dplyr.tidyverse.org/reference/context.html" class="external-link">n</a></span><span class="op">(</span><span class="op">)</span>, .groups <span class="op">=</span> <span class="st">"drop"</span><span class="op">)</span> <span class="op">|&gt;</span></span>
+<span>  <span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">days</span></span></code></pre></div>
+<p>For <code>temp_min_c</code>, <code>temp_max_c</code>,
+<code>rel_humidity_min_pct</code>, and
+<code>rel_humidity_max_pct</code>, the count includes an hour where the
+previous-hour extreme is missing but the hourly reading is present. A
+zero total is a measured zero, while a missing total means every
+contributing hour was missing.</p>
 <p>The daily table aggregates the hourly one by local standard date. For
 sub-daily questions, use <code>read_inmet("hourly", years = ...)</code>
 the same way. Timestamps there are in UTC, and <code>date_local</code>

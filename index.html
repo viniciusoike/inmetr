@@ -61,6 +61,7 @@
 <span>  <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/filter.html" class="external-link">filter</a></span><span class="op">(</span><span class="va">.data</span><span class="op">$</span><span class="va">code_station</span> <span class="op"><a href="https://rdrr.io/r/base/match.html" class="external-link">%in%</a></span> <span class="va">stations</span><span class="op">$</span><span class="va">code_station</span><span class="op">)</span> <span class="op">|&gt;</span></span>
 <span>  <span class="fu">dplyr</span><span class="fu">::</span><span class="fu"><a href="https://dplyr.tidyverse.org/reference/compute.html" class="external-link">collect</a></span><span class="op">(</span><span class="op">)</span></span></code></pre></div>
 <p>The data release is downloaded on first use into the user cache. Downloaded files are checked against their SHA-256 hashes. Later reads check file size; use <code><a href="reference/inmet_cache_clear.html">inmet_cache_clear()</a></code> to recover from suspected cache corruption.</p>
+<p>Daily rows carry <code>n_hours</code> for overall coverage. The staged schema 3 release adds a <code>n_hours_*</code> column for each aggregate; these columns become available by default after publication and the package data-version update. The current default release uses schema 2.</p>
 
   </main><aside class="col-md-3"><div class="links">
 <h2 data-toc-skip>Links</h2>
