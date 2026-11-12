@@ -14,6 +14,8 @@ Rscript data-raw/acquire.R 2025 2026    # selected years
 Rscript data-raw/acquire.R --refresh 2025 2026  # re-download and compare
 ```
 
+Acquisition also needs the `curl` command-line tool: the downloader reads HTTP validators from the same response as the archive bytes.
+
 Acquisition caches archives under `data-raw/data/cache/`, extracts each year into `data-raw/data/official/inmet_YYYY/`, and writes `official/files-YYYY.csv` with the size and SHA-256 of every extracted CSV. Before reusing a cached archive it re-expands the archive and compares member names and bytes with the extracted directory. A missing, extra, or altered CSV aborts without touching the existing inventory or provenance. Cache reuse never contacts the network and keeps the original retrieval time and HTTP validators. A fresh download records the `Last-Modified`, `ETag`, and `Content-Length` headers from the same response as the bytes, and `official/provenance.json` ties each year to the archive size, archive SHA-256, and inventory SHA-256.
 
 `--refresh` downloads the selected years into a staging file. If the bytes match the cache, the archive is kept and only `revalidated_at_utc` changes. If they differ, the previous archive, extracted directory, file inventory, and revision reports move to `official/history/` (`archives/`, `extracts/`, `inventory/`, `revisions/<sha>/`), and the prior provenance entry is kept under `previous` before the new snapshot is installed. Nothing is overwritten in place.

@@ -43,6 +43,10 @@ parse_response_headers <- function(lines) {
   }
   lines <- sub("\r$", "", lines)
   blocks <- split(lines, cumsum(lines == ""))
+  blocks <- Filter(function(block) any(nzchar(block)), blocks)
+  if (!length(blocks)) {
+    return(list())
+  }
   final <- blocks[[length(blocks)]]
   value <- function(name) {
     hit <- grep(paste0("^", name, ":"), final, ignore.case = TRUE, value = TRUE)
@@ -426,6 +430,9 @@ acquire_year <- function(
     download_snapshot(year, cache_path, transport)
   } else {
     NULL
+  }
+  if (!is.null(snapshot)) {
+    on.exit(unlink(snapshot$path), add = TRUE)
   }
   if (is.null(snapshot)) {
     if (is.null(entry)) {

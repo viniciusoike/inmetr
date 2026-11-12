@@ -251,3 +251,42 @@ testthat::test_that("acquisition arguments select refresh and years", {
     "distinct"
   )
 })
+
+testthat::test_that("response headers come from the final response block", {
+  headers <- parse_response_headers(c(
+    "HTTP/1.1 302 Found",
+    "Location: https://example.test/2000.zip",
+    "",
+    "HTTP/1.1 200 OK",
+    "Last-Modified: Wed, 02 Sep 2020 12:14:18 GMT",
+    "ETag: \"abc\"",
+    "Content-Length: 123",
+    ""
+  ))
+  testthat::expect_equal(headers$last_modified, "Wed, 02 Sep 2020 12:14:18 GMT")
+  testthat::expect_equal(headers$etag, "\"abc\"")
+  testthat::expect_equal(headers$content_length, "123")
+  testthat::expect_null(parse_response_headers(character())$last_modified)
+})
+
+testthat::test_that("truncated downloads abort before caching", {
+  root <- local_official_root()
+  on.exit(unlink(root, recursive = TRUE), add = TRUE)
+  source <- tempfile(fileext = ".zip")
+  on.exit(unlink(source), add = TRUE)
+  zip_fixture(source, c("a.CSV" = "fresh\n"))
+  transport <- fixture_transport(
+    source,
+    list(content_length = as.character(file.info(source)$size + 1L))
+  )
+  testthat::expect_error(
+    acquire_year(2026L, root, transport = transport),
+    "declared"
+  )
+  testthat::expect_false(file.exists(file.path(
+    root,
+    "cache",
+    "inmet-2026.zip"
+  )))
+  testthat::expect_false(dir.exists(file.path(root, "official", "inmet_2026")))
+})
