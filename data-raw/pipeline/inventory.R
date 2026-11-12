@@ -29,7 +29,7 @@ discover_legacy_files <- function(legacy_root) {
         basename(directory)
       )),
       source = "legacy",
-      directory = directory
+      directory = dirname(paths)
     ))
   }))
   return(run)
@@ -67,11 +67,12 @@ discover_official_files <- function(data_root) {
         "i" = "Remove the empty directory or run {.code Rscript data-raw/acquire.R --refresh {year}}."
       ))
     }
+    paths <- verify_official_year(data_root, year, provenance)
     return(data.table::data.table(
-      path = verify_official_year(data_root, year, provenance),
+      path = paths,
       year = year,
       source = "official",
-      directory = directory
+      directory = dirname(paths)
     ))
   }))
   absent <- setdiff(names(provenance), as.character(years))
