@@ -140,9 +140,11 @@ read_inmet("hourly", 2021) |>
   ) |>
   dplyr::collect()
 
-# Schema 3 daily releases expose that coverage directly.
-read_inmet("daily", 2024) |>
-  dplyr::filter(.data$n_hours_temp_max >= 18) |>
-  dplyr::collect()
+# Schema 3 counts include fallback readings for daily extremes.
+if ("n_hours_temp_max" \%in\% colnames(daily)) {
+  daily |>
+    dplyr::filter(.data$n_hours_temp_max >= 18) |>
+    dplyr::collect()
+}
 \dontshow{\}) # examplesIf}
 }
