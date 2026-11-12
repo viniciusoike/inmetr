@@ -30,6 +30,7 @@ if (length(missing_dependencies)) {
 }
 
 source(here::here("data-raw", "pipeline", "parse.R"))
+source(here::here("data-raw", "pipeline", "archive.R"))
 source(here::here("data-raw", "pipeline", "inventory.R"))
 source(here::here("data-raw", "pipeline", "stations.R"))
 source(here::here("data-raw", "pipeline", "write.R"))

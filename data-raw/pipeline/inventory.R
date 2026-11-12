@@ -1,64 +1,101 @@
 # Input inventory ----
 
 # Refreshed official archives live under data-raw/data/official/inmet_YYYY and
-# supersede legacy extracts in data-raw/data/zipped_files/inmet_YYYY. The
-# legacy files stay in place so revisions can be audited.
+# supersede legacy extracts in data-raw/data/zipped_files/inmet_YYYY. Official
+# years are selected only after their provenance, cached archive, extracted
+# bytes and inventory evidence are verified. Legacy files stay in place so
+# revisions can be audited, and legacy-only years remain supported.
+
+year_directory_name <- function(path) {
+  return(grepl("^inmet_[0-9]{4}(_.*)?$", basename(path)))
+}
+
+discover_legacy_files <- function(legacy_root) {
+  if (!dir.exists(legacy_root)) {
+    return(NULL)
+  }
+  year_dirs <- list.dirs(legacy_root, recursive = FALSE)
+  year_dirs <- year_dirs[year_directory_name(year_dirs)]
+  run <- data.table::rbindlist(lapply(year_dirs, function(directory) {
+    paths <- scan_csv_files(directory)
+    if (!length(paths)) {
+      return(NULL)
+    }
+    return(data.table::data.table(
+      path = paths,
+      year = as.integer(sub(
+        "^inmet_([0-9]{4}).*$",
+        "\\1",
+        basename(directory)
+      )),
+      source = "legacy",
+      directory = directory
+    ))
+  }))
+  return(run)
+}
+
+discover_official_files <- function(data_root) {
+  official_root <- file.path(data_root, "official")
+  if (!dir.exists(official_root)) {
+    return(NULL)
+  }
+  year_dirs <- list.dirs(official_root, recursive = FALSE)
+  year_dirs <- year_dirs[year_directory_name(year_dirs)]
+  provenance <- read_provenance(official_root)
+  if (!length(year_dirs)) {
+    if (length(provenance)) {
+      cli::cli_abort(c(
+        "Provenance lists official year{?s} {.val {names(provenance)}} without an extracted directory.",
+        "i" = "Restore the directory or run {.code Rscript data-raw/acquire.R --refresh}."
+      ))
+    }
+    return(NULL)
+  }
+  years <- as.integer(sub("^inmet_([0-9]{4}).*$", "\\1", basename(year_dirs)))
+  if (anyDuplicated(years)) {
+    cli::cli_abort(
+      "Official inputs repeat year{?s} {.val {years[duplicated(years)]}}."
+    )
+  }
+  run <- data.table::rbindlist(lapply(seq_along(year_dirs), function(index) {
+    directory <- year_dirs[[index]]
+    year <- years[[index]]
+    if (!length(scan_csv_files(directory))) {
+      cli::cli_abort(c(
+        "Official input {.val {year}} in {.file {directory}} has no CSV files.",
+        "i" = "Remove the empty directory or run {.code Rscript data-raw/acquire.R --refresh {year}}."
+      ))
+    }
+    return(data.table::data.table(
+      path = verify_official_year(data_root, year, provenance),
+      year = year,
+      source = "official",
+      directory = directory
+    ))
+  }))
+  absent <- setdiff(names(provenance), as.character(years))
+  if (length(absent)) {
+    cli::cli_abort(c(
+      "Provenance lists official year{?s} {.val {absent}} without an extracted directory.",
+      "i" = "Restore the directory or run {.code Rscript data-raw/acquire.R --refresh {absent}}."
+    ))
+  }
+  return(run)
+}
+
 discover_input_files <- function(
   data_root,
   min_year = 2000L,
   max_year = as.integer(format(Sys.Date(), "%Y")) + 1L
 ) {
-  roots <- c(
-    legacy = file.path(data_root, "zipped_files"),
-    official = file.path(data_root, "official")
-  )
-  run <- data.table::rbindlist(
-    lapply(names(roots), function(source) {
-      if (!dir.exists(roots[[source]])) {
-        return(NULL)
-      }
-      year_dirs <- list.dirs(roots[[source]], recursive = FALSE)
-      year_dirs <- year_dirs[
-        grepl("^inmet_[0-9]{4}(_.*)?$", basename(year_dirs))
-      ]
-      paths <- as.character(unlist(
-        lapply(
-          year_dirs,
-          list.files,
-          pattern = "\\.[Cc][Ss][Vv]$",
-          recursive = TRUE,
-          full.names = TRUE
-        ),
-        use.names = FALSE
-      ))
-      paths <- paths[!startsWith(basename(paths), "._")]
-      if (!length(paths)) {
-        return(NULL)
-      }
-      relative <- substring(
-        normalizePath(paths, winslash = "/"),
-        nchar(normalizePath(roots[[source]], winslash = "/")) + 2L
-      )
-      year <- vapply(
-        strsplit(relative, "/", fixed = TRUE),
-        function(parts) {
-          match <- grep("^inmet_[0-9]{4}(_.*)?$", parts, value = TRUE)
-          if (length(match) != 1L) {
-            return(NA_integer_)
-          }
-          return(as.integer(sub("^inmet_([0-9]{4}).*$", "\\1", match)))
-        },
-        integer(1)
-      )
-      data.table::data.table(
-        path = paths,
-        year = year,
-        source = source,
-        directory = dirname(paths)
-      )
-    }),
-    use.names = TRUE
-  )
+  run <- data.table::rbindlist(Filter(
+    Negate(is.null),
+    list(
+      discover_legacy_files(file.path(data_root, "zipped_files")),
+      discover_official_files(data_root)
+    )
+  ))
   if (is.null(run) || !nrow(run)) {
     cli::cli_abort("No INMET automatic-station CSV files found.")
   }

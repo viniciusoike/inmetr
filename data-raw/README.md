@@ -11,9 +11,14 @@ Download and extract the current official archives:
 ```sh
 Rscript data-raw/acquire.R              # 2000 to the current year
 Rscript data-raw/acquire.R 2025 2026    # selected years
+Rscript data-raw/acquire.R --refresh 2025 2026  # re-download and compare
 ```
 
-Archives are cached under `data-raw/data/cache/` and extracted separately to `data-raw/data/official/inmet_YYYY/`. `official/provenance.json` records the source URL, retrieval time, HTTP validators, archive size and SHA-256, declared CSV date span, and file count. `official/revisions.csv` and `revisions-YYYY-*.csv` audit refreshed archives against the legacy extracts in `data-raw/data/zipped_files/inmet_YYYY/`, which are left in place. Extraction never overwrites an existing directory; move one aside explicitly before re-extracting it.
+Acquisition caches archives under `data-raw/data/cache/`, extracts each year into `data-raw/data/official/inmet_YYYY/`, and writes `official/files-YYYY.csv` with the size and SHA-256 of every extracted CSV. Before reusing a cached archive it re-expands the archive and compares member names and bytes with the extracted directory. A missing, extra, or altered CSV aborts without touching the existing inventory or provenance. Cache reuse never contacts the network and keeps the original retrieval time and HTTP validators. A fresh download records the `Last-Modified`, `ETag`, and `Content-Length` headers from the same response as the bytes, and `official/provenance.json` ties each year to the archive size, archive SHA-256, and inventory SHA-256.
+
+`--refresh` downloads the selected years into a staging file. If the bytes match the cache, the archive is kept and only `revalidated_at_utc` changes. If they differ, the previous archive, extracted directory, file inventory, and revision reports move to `official/history/` (`archives/`, `extracts/`, `inventory/`, `revisions/<sha>/`), and the prior provenance entry is kept under `previous` before the new snapshot is installed. Nothing is overwritten in place.
+
+The build uses an official year only when its provenance is complete, the cached archive matches the recorded size and SHA-256, `files-YYYY.csv` matches its recorded SHA-256, and every extracted CSV matches the archive member list and hashes. Empty, partial, mutated, or unprovenanced official years abort the build instead of silently falling back to legacy files. Years without an official directory remain legacy-only. `official/revisions.csv` and `revisions-YYYY-*.csv` audit refreshed archives against the legacy extracts in `data-raw/data/zipped_files/inmet_YYYY/`, which are left in place.
 
 ```sh
 Rscript data-raw/build.R --sample
