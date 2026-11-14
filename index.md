@@ -1,6 +1,9 @@
 inmetr provides verified INMET automatic weather station data for lazy R
 queries and nearby-station lookup.
 
+**Experimental:** The package is under active development, and its
+interface may change.
+
 Install from GitHub:
 
 ``` r
